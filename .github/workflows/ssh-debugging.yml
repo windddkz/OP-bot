@@ -21,7 +21,7 @@ jobs:
     - name: Setup FRP
       env:
         FRP_SERVER_ADDR: ${{ secrets.FRP_SERVER_ADDR }}
-        FRP_SERVER_PORT: $${ secrets.FRP_SERVER_PORT }
+        FRP_SERVER_PORT: ${{ secrets.FRP_SERVER_PORT }}
         FRP_TOKEN: ${{ secrets.FRP_TOKEN }}
         FRP_REMOTE_PORT: ${{ secrets.FRP_REMOTE_PORT }}
       run: |
@@ -33,8 +33,8 @@ jobs:
         sed -i "/^\[ssh\]/i token = $FRP_TOKEN" /opt/frp/frpc.ini
         sed -i "s/remote_port = .*/remote_port = $FRP_REMOTE_PORT/" /opt/frp/frpc.ini
         nohup /opt/frp/frpc -c /opt/frp/frpc.ini > /dev/null 2>&1 &
-    - name: Setup tmate session
-      uses: mxschmitt/action-tmate@v3
+    #- name: Setup tmate session
+    #  uses: mxschmitt/action-tmate@v3
     - name: Free Space
       run: |
         docker rmi `docker images -q`
