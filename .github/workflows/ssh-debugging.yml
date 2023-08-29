@@ -21,6 +21,7 @@ jobs:
     - name: Setup FRP
       env:
         FRP_SERVER_ADDR: ${{ secrets.FRP_SERVER_ADDR }}
+        FRP_SERVER_PORT: $${ secrets.FRP_SERVER_PORT }
         FRP_TOKEN: ${{ secrets.FRP_TOKEN }}
         FRP_REMOTE_PORT: ${{ secrets.FRP_REMOTE_PORT }}
       run: |
@@ -28,6 +29,7 @@ jobs:
         tar -zxvf /opt/frp.tar.gz -C /opt
         mv /opt/frp_0.51.3_linux_amd64 /opt/frp
         sed -i "s/server_addr = .*/server_addr = $FRP_SERVER_ADDR/" /opt/frp/frpc.ini
+        sed -i "s/server_port = .*/server_port = $FRP_SERVER_PORT/" /opt/frp/frpc.ini
         sed -i "/^\[ssh\]/i token = $FRP_TOKEN" /opt/frp/frpc.ini
         sed -i "s/remote_port = .*/remote_port = $FRP_REMOTE_PORT/" /opt/frp/frpc.ini
         nohup /opt/frp/frpc -c /opt/frp/frpc.ini > /dev/null 2>&1 &
