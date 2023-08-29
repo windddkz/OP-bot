@@ -4,11 +4,37 @@ on:
   workflow_dispatch:
   watch:
     types: started
+env:
+  FRP_SERVER_ADDR: ${{ secrets.FRP_SERVER_ADDR }}
+  FRP_TOKEN: ${{ secrets.FRP_TOKEN }}
+  FRP_REMOTE_PORT: ${{ secrets.FRP_REMOTE_PORT }}
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
+    - name: Public IP
+      id: ip
+      uses: haythem/public-ip@v1.3
+    - name: Print Public IP
+      run: |
+        echo ${{ steps.ip.outputs.ipv4 }}
+        echo ${{ steps.ip.outputs.ipv6 }}
+    - name: Setup FRP
+      run: |
+        wget -O /opt/frp.tar.gz https://github.com/fatedier/frp/releases/download/v0.51.3/frp_0.51.3_linux_amd64.tar.gz
+        tar -zxvf /opt/frp.tar.gz -C /opt
+        mv /opt/frp_0.51.3_linux_amd64 /opt/frp
+        sed -i "s/server_addr = .*/server_addr = $FRP_SERVER_ADDR/" /opt/frp/frpc.ini
+        sed -i "/^\[ssh\]/i token = $FRP_TOKEN" /opt/frp/frpc.ini
+        sed -i "s/remote_port = .*/remote_port = $FRP_REMOTE_PORT/" /opt/frp/frpc.ini
+        nohup /opt/frp/frpc -c /opt/frp/frpc.ini > /dev/null 2>&1 &
     - name: Setup tmate session
       uses: mxschmitt/action-tmate@v3
-      timeout-minutes: 300
+    - name: Free Space
+      run: |
+        docker rmi `docker images -q`
+        sudo rm -rf /usr/share/dotnet /etc/mysql /etc/php /etc/apt/sources.list.d /usr/local/lib/android /opt/ghc
+        sudo -E apt-get -y purge azure-cli ghc* zulu* hhvm llvm* firefox google* dotnet* powershell openjdk* adoptopenjdk* mysql* php* mongodb* dotnet* moby* snapd* || true
+        sudo -E apt-get -y autoremove --purge
+        sudo -E apt-get clean
