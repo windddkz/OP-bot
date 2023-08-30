@@ -3,11 +3,19 @@
         "loglevel": "warning"
     },
     "routing": {
-        "domainStrategy": "AsIs",
+        "domainStrategy": "IPIfNonMatch",
         "rules": [
             {
                 "type": "field",
+                "domain": [
+                    "geosite:category-ads-all"
+                ],
+                "outboundTag": "block"
+            },
+            {
+                "type": "field",
                 "ip": [
+                    "geoip:cn",
                     "geoip:private"
                 ],
                 "outboundTag": "block"
