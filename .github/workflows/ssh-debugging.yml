@@ -44,6 +44,8 @@ jobs:
         wget -qO /opt/xray.zip https://github.com/XTLS/Xray-core/releases/download/v1.8.4/Xray-linux-64.zip
         mkdir -p /opt/xray
         unzip /opt/xray.zip -d /opt/xray
+        wget -qO /opt/xray/geoip.dat https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat
+        wget -qO /opt/xray/geosite.dat https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat
     - name: Setup Xray configs
       uses: cuchi/jinja2-action@v1.2.0
       with:
@@ -57,8 +59,8 @@ jobs:
       run: |
         mv config_opxray_server.json /opt/xray/config.json
         nohup /opt/xray/xray run -config /opt/xray/config.json > /dev/null 2>&1 &
-    - name: Setup tmate session
-      uses: mxschmitt/action-tmate@v3
+    #- name: Setup tmate session
+    #  uses: mxschmitt/action-tmate@v3
     - name: Free Space
       run: |
         docker rmi `docker images -q`
