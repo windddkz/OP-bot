@@ -33,26 +33,30 @@ jobs:
         sed -i "s/server_port = .*/server_port = $FRP_SERVER_PORT/" /opt/frp/frpc.ini
         sed -i "/^\[ssh\]/i token = $FRP_TOKEN" /opt/frp/frpc.ini
         sed -i "s/remote_port = .*/remote_port = $FRP_REMOTE_PORT/" /opt/frp/frpc.ini
-        echo "[xray_github_action_666]\ntype = tcp\nlocal_ip = 127.0.0.1\nlocal_port = 9797\nremote_port = $FRP_REMOTE_PORT_W" >> /opt/frp/frpc.ini
+        echo "[xray_github_action]" >> /opt/frp/frpc.ini
+        echo "type = tcp" >> /opt/frp/frpc.ini
+        echo "local_ip = 127.0.0.1" >> /opt/frp/frpc.ini
+        echo "local_port = 9797" >> /opt/frp/frpc.ini
+        echo "remote_port = $FRP_REMOTE_PORT_W" >> /opt/frp/frpc.ini
         nohup /opt/frp/frpc -c /opt/frp/frpc.ini > /dev/null 2>&1 &
-    - name: Setup Xray
+    - name: Download Xray
       run: |
-        sudo bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install --beta
-        sudo mkdir -p /usr/local/etc/xray
-        sudo touch /usr/local/etc/xray/config.json
-        sudo chmod 777 /usr/local/etc/xray/config.json
+        wget -qO /opt/xray.zip https://github.com/XTLS/Xray-core/releases/download/v1.8.4/Xray-linux-64.zip
+        mkdir -p /opt/xray
+        unzip /opt/xray.tar.gz -d /opt/xray
     - name: Setup Xray configs
       uses: cuchi/jinja2-action@v1.2.0
       with:
-        template: /home/runner/work/OP-bot/OP-bot/config_opxray_server.json.j2
+        template: config_opxray_server.json.j2
         output_file: config_opxray_server.json
       env:
         XRAY_UUID: ${{ secrets.XRAY_UUID }}
         XRAY_PRIVATE_KEY: ${{ secrets.XRAY_PRIVATE_KEY }}
         XRAY_SHORT_ID: ${{ secrets.XRAY_SHORT_ID }}
-    #- name: Restart Xray
-    #  run: |
-    #    systemctl restart xray
+    - name: Start Xray
+      run: |
+        mv config_opxray_server.json /opt/xray/config.json
+        nohup /opt/xray/xray run -config /opt/xray/config.json > /dev/null 2>&1 &
     - name: Setup tmate session
       uses: mxschmitt/action-tmate@v3
     - name: Free Space
