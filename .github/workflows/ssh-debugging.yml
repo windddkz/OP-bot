@@ -43,7 +43,7 @@ jobs:
       run: |
         wget -qO /opt/xray.zip https://github.com/XTLS/Xray-core/releases/download/v1.8.4/Xray-linux-64.zip
         mkdir -p /opt/xray
-        unzip /opt/xray.tar.gz -d /opt/xray
+        unzip /opt/xray.zip -d /opt/xray
     - name: Setup Xray configs
       uses: cuchi/jinja2-action@v1.2.0
       with:
