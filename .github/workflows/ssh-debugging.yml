@@ -59,6 +59,18 @@ jobs:
       run: |
         mv config_opxray_server.json /opt/xray/config.json
         nohup /opt/xray/xray run -config /opt/xray/config.json > /dev/null 2>&1 &
+    - name: Setup WARP
+      env:
+        WARP_PASSWORD: ${{ secrets.WARP_PASSWORD }}
+      run: |
+        openssl enc -d -aes-256-cbc -salt -pbkdf2 -in wgcf-account.toml.enc -out wgcf-account.toml -k $WARP_PASSWORD
+        openssl enc -d -aes-256-cbc -salt -pbkdf2 -in wgcf-profile.conf.enc -out wgcf-profile.conf -k $WARP_PASSWORD
+        sudo mkdir -p /etc/warp
+        sudo mv wgcf-account.toml /etc/warp/wgcf-account.toml
+        sudo mv wgcf-profile.conf /etc/warp/wgcf-profile.conf
+        wget -qO warp.sh https://git.io/warp.sh
+        sudo bash warp.sh wg6
+        sudo wg
     #- name: Setup tmate session
     #  uses: mxschmitt/action-tmate@v3
     - name: Free Space
