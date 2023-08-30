@@ -1,10 +1,10 @@
 name: Remote SSH1
 on:
   workflow_dispatch:
-  #workflow_run:
-  #  workflows: [Remote SSH2]
-  #  types:
-  #    - completed
+  workflow_run:
+    workflows: [Remote SSH2]
+    types:
+      - completed
   watch:
     types: started
 jobs:
@@ -74,7 +74,7 @@ jobs:
         wget -qO warp.sh https://git.io/warp.sh
         sudo bash warp.sh wg6
         sudo wg
-    - name: Setup IPv6 FRP
+    - name: Setup Another FRP
       env:
         FRP_SERVER_ADDR_IPV6: ${{ secrets.FRP_SERVER_ADDR_IPV6 }}
         FRP_SERVER_PORT_IPV6: ${{ secrets.FRP_SERVER_PORT_IPV6 }}
