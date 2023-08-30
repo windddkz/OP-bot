@@ -38,6 +38,9 @@ jobs:
     - name: Setup Xray
       run: |
         sudo bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install --beta
+        sudo mkdir -p /usr/local/etc/xray
+        sudo touch /usr/local/etc/xray/config.json
+        sudo chmod 777 /usr/local/etc/xray/config.json
     - name: Setup Xray configs
       uses: cuchi/jinja2-action@v1.2.0
       with:
