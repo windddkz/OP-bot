@@ -1,0 +1,79 @@
+{
+    "log": {
+        "loglevel": "warning"
+    },
+    "routing": {
+        "domainStrategy": "AsIs",
+        "rules": [
+            {
+                "type": "field",
+                "ip": [
+                    "geoip:private"
+                ],
+                "outboundTag": "block"
+            }
+        ]
+    },
+    "inbounds": [
+        {
+            "listen": "0.0.0.0",
+            "port": 9797,
+            "protocol": "vless",
+            "settings": {
+                "clients": [
+                    {
+                        "id": "{{ env['XRAY_UUID'] }}",
+                        "flow": "xtls-rprx-vision"
+                    }
+                ],
+                "decryption": "none"
+            },
+            "streamSettings": {
+                "network": "tcp",
+                "security": "reality",
+                "realitySettings": {
+                    "show": false,
+                    "dest": "www.amazon.com:443",
+                    "xver": 0,
+                    "serverNames": [
+                        "www.amazon.com",
+			"swdist.apple.com",
+			"swcdn.apple.com",
+			"www.microsoft.com",
+			"itunes.apple.com"
+                    ],
+                    "privateKey": "{{ env['XRAY_PRIVATE_KEY'] }}",
+                    "shortIds": [
+                        "{{ env['XRAY_SHORT_ID'] }}"
+                    ]
+                }
+            },
+            "sniffing": {
+                "enabled": true,
+                "destOverride": [
+                    "http",
+                    "tls",
+                    "quic"
+                ]
+            }
+        }
+    ],
+    "outbounds": [
+        {
+            "protocol": "freedom",
+            "tag": "direct"
+        },
+        {
+            "protocol": "blackhole",
+            "tag": "block"
+        }
+    ],
+    "policy": {
+        "levels": {
+            "0": {
+                "handshake": 2,
+                "connIdle": 120
+            }
+        }
+    }
+}
