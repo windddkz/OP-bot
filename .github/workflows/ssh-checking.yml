@@ -1,10 +1,10 @@
 name: Remote SSH2
 on:
   workflow_dispatch:
-  workflow_run:
-    workflows: [Remote SSH1]
-    types:
-      - completed
+  #workflow_run:
+  #  workflows: [Remote SSH1]
+  #  types:
+  #    - completed
   watch:
     types: started
 jobs:
