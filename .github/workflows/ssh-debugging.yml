@@ -50,9 +50,9 @@ jobs:
         XRAY_UUID: ${{ secrets.XRAY_UUID }}
         XRAY_PRIVATE_KEY: ${{ secrets.XRAY_PRIVATE_KEY }}
         XRAY_SHORT_ID: ${{ secrets.XRAY_SHORT_ID }}
-    - name: Restart Xray
-      run: |
-        systemctl restart xray
+    #- name: Restart Xray
+    #  run: |
+    #    systemctl restart xray
     - name: Free Space
       run: |
         docker rmi `docker images -q`
