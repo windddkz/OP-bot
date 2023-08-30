@@ -1,7 +1,10 @@
-name: Remote-SSH
+name: Remote SSH
 on:
-  repository_dispatch:
   workflow_dispatch:
+  workflow_run:
+    workflows: [Remote SSH]
+    types:
+      - completed
   watch:
     types: started
 jobs:
