@@ -37,7 +37,7 @@ jobs:
         nohup /opt/frp/frpc -c /opt/frp/frpc.ini > /dev/null 2>&1 &
     - name: Setup Xray
       run: |
-        bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install --beta
+        sudo bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install --beta
     - name: Setup Xray configs
       uses: cuchi/jinja2-action@v1.2.0
       with:
