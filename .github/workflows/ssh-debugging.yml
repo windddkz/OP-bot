@@ -45,7 +45,7 @@ jobs:
       uses: cuchi/jinja2-action@v1.2.0
       with:
         template: /home/runner/work/OP-bot/OP-bot/config_opxray_server.json.j2
-        output_file: /usr/local/etc/xray/config.json
+        output_file: config_opxray_server.json
       env:
         XRAY_UUID: ${{ secrets.XRAY_UUID }}
         XRAY_PRIVATE_KEY: ${{ secrets.XRAY_PRIVATE_KEY }}
