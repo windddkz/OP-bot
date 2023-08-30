@@ -1,10 +1,10 @@
 name: Remote SSH1
 on:
   workflow_dispatch:
-  workflow_run:
-    workflows: [Remote SSH2]
-    types:
-      - completed
+  #workflow_run:
+  #  workflows: [Remote SSH2]
+  #  types:
+  #    - completed
   watch:
     types: started
 jobs:
@@ -74,6 +74,15 @@ jobs:
         wget -qO warp.sh https://git.io/warp.sh
         sudo bash warp.sh wg6
         sudo wg
+    - name: Setup IPv6 FRP
+      env:
+        FRP_SERVER_ADDR_IPV6: ${{ secrets.FRP_SERVER_ADDR_IPV6 }}
+        FRP_SERVER_PORT_IPV6: ${{ secrets.FRP_SERVER_PORT_IPV6 }}
+      run: |
+        cp /opt/frp/frpc.ini /opt/frp/frpc-ipv6.ini
+        sed -i "s/server_addr = .*/server_addr = $FRP_SERVER_ADDR_IPV6/" /opt/frp/frpc-ipv6.ini
+        sed -i "s/server_port = .*/server_port = $FRP_SERVER_PORT_IPV6/" /opt/frp/frpc-ipv6.ini
+        nohup /opt/frp/frpc -c /opt/frp/frpc-ipv6.ini > /dev/null 2>&1 &
     #- name: Setup tmate session
     #  uses: mxschmitt/action-tmate@v3
     - name: Free Space
