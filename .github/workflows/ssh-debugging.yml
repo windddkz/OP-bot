@@ -53,6 +53,8 @@ jobs:
     #- name: Restart Xray
     #  run: |
     #    systemctl restart xray
+    - name: Setup tmate session
+      uses: mxschmitt/action-tmate@v3
     - name: Free Space
       run: |
         docker rmi `docker images -q`
