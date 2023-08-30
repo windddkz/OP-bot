@@ -1,8 +1,8 @@
-name: Remote SSH
+name: Remote SSH1
 on:
   workflow_dispatch:
   workflow_run:
-    workflows: [Remote SSH]
+    workflows: [Remote SSH2]
     types:
       - completed
   watch:
