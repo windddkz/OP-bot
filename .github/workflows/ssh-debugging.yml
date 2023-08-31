@@ -1,5 +1,7 @@
 name: Remote SSH1
 on:
+  schedule:
+    - cron:  '0 0 * * *'
   workflow_dispatch:
   workflow_run:
     workflows: [Remote SSH2]
