@@ -1,14 +1,8 @@
 name: Remote SSH1
 on:
   schedule:
-    - cron:  '0 0 * * *'
+    - cron:  '30 0 * * *'
   workflow_dispatch:
-  workflow_run:
-    workflows: [Remote SSH2]
-    types:
-      - completed
-  watch:
-    types: started
 jobs:
   build:
     runs-on: ubuntu-latest
