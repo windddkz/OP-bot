@@ -1,0 +1,96 @@
+name: Remote SSH4
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: [Remote SSH3]
+    types:
+      - completed
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Setup SSH Public Key
+      env:
+        SSH_PUBLIC_KEY: ${{ secrets.SSH_PUBLIC_KEY }}
+      run: |
+        mkdir -p /home/runner/.ssh
+        chmod 700 /home/runner/.ssh
+        touch /home/runner/.ssh/authorized_keys
+        echo $SSH_PUBLIC_KEY >> /home/runner/.ssh/authorized_keys
+        chmod 600 /home/runner/.ssh/authorized_keys
+    - name: Setup FRP
+      env:
+        FRP_SERVER_ADDR: ${{ secrets.FRP_SERVER_ADDR }}
+        FRP_SERVER_PORT: ${{ secrets.FRP_SERVER_PORT }}
+        FRP_TOKEN: ${{ secrets.FRP_TOKEN }}
+        FRP_REMOTE_PORT: ${{ secrets.FRP_REMOTE_PORT }}
+        FRP_REMOTE_PORT_W: ${{ secrets.FRP_REMOTE_PORT_W }}
+      run: |
+        wget -qO /opt/frp.tar.gz https://github.com/fatedier/frp/releases/download/v0.51.3/frp_0.51.3_linux_amd64.tar.gz
+        tar -zxvf /opt/frp.tar.gz -C /opt
+        mv /opt/frp_0.51.3_linux_amd64 /opt/frp
+        sed -i "s/server_addr = .*/server_addr = $FRP_SERVER_ADDR/" /opt/frp/frpc.ini
+        sed -i "s/server_port = .*/server_port = $FRP_SERVER_PORT/" /opt/frp/frpc.ini
+        sed -i "/^\[ssh\]/i token = $FRP_TOKEN" /opt/frp/frpc.ini
+        sed -i "s/remote_port = .*/remote_port = $FRP_REMOTE_PORT/" /opt/frp/frpc.ini
+        echo "[xray_github_action]" >> /opt/frp/frpc.ini
+        echo "type = tcp" >> /opt/frp/frpc.ini
+        echo "local_ip = 127.0.0.1" >> /opt/frp/frpc.ini
+        echo "local_port = 9797" >> /opt/frp/frpc.ini
+        echo "remote_port = $FRP_REMOTE_PORT_W" >> /opt/frp/frpc.ini
+        nohup /opt/frp/frpc -c /opt/frp/frpc.ini > /dev/null 2>&1 &
+    - name: Download Xray
+      run: |
+        wget -qO /opt/xray.zip https://github.com/XTLS/Xray-core/releases/download/v1.8.4/Xray-linux-64.zip
+        mkdir -p /opt/xray
+        unzip /opt/xray.zip -d /opt/xray
+        wget -qO /opt/xray/geoip.dat https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat
+        wget -qO /opt/xray/geosite.dat https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat
+    - name: Setup Xray configs
+      uses: cuchi/jinja2-action@v1.2.0
+      with:
+        template: config_opxray_server.json.j2
+        output_file: config_opxray_server.json
+      env:
+        XRAY_UUID: ${{ secrets.XRAY_UUID }}
+        XRAY_PRIVATE_KEY: ${{ secrets.XRAY_PRIVATE_KEY }}
+        XRAY_SHORT_ID: ${{ secrets.XRAY_SHORT_ID }}
+    - name: Start Xray
+      run: |
+        mv config_opxray_server.json /opt/xray/config.json
+        nohup /opt/xray/xray run -config /opt/xray/config.json > /dev/null 2>&1 &
+    - name: Setup WARP
+      env:
+        WARP_PASSWORD: ${{ secrets.WARP_PASSWORD }}
+      run: |
+        openssl enc -d -aes-256-cbc -salt -pbkdf2 -in wgcf-account.toml.enc -out wgcf-account.toml -k $WARP_PASSWORD
+        openssl enc -d -aes-256-cbc -salt -pbkdf2 -in wgcf-profile.conf.enc -out wgcf-profile.conf -k $WARP_PASSWORD
+        sudo mkdir -p /etc/warp
+        sudo mv wgcf-account.toml /etc/warp/wgcf-account.toml
+        sudo mv wgcf-profile.conf /etc/warp/wgcf-profile.conf
+        wget -qO warp.sh https://git.io/warp.sh
+        sudo bash warp.sh wg6
+        sudo wg
+    - name: Setup Another FRP
+      env:
+        FRP_SERVER_ADDR_IPV6: ${{ secrets.FRP_SERVER_ADDR_IPV6 }}
+        FRP_SERVER_PORT_IPV6: ${{ secrets.FRP_SERVER_PORT_IPV6 }}
+      run: |
+        cp /opt/frp/frpc.ini /opt/frp/frpc-ipv6.ini
+        sed -i "s/server_addr = .*/server_addr = $FRP_SERVER_ADDR_IPV6/" /opt/frp/frpc-ipv6.ini
+        sed -i "s/server_port = .*/server_port = $FRP_SERVER_PORT_IPV6/" /opt/frp/frpc-ipv6.ini
+        nohup /opt/frp/frpc -c /opt/frp/frpc-ipv6.ini > /dev/null 2>&1 &
+    #- name: Setup tmate session
+    #  uses: mxschmitt/action-tmate@v3
+    - name: Free Space
+      run: |
+        docker rmi `docker images -q`
+        sudo rm -rf /usr/share/dotnet /etc/mysql /etc/php /etc/apt/sources.list.d /usr/local/lib/android /opt/ghc
+        sudo -E apt-get -y purge azure-cli ghc* zulu* hhvm llvm* firefox google* dotnet* powershell openjdk* adoptopenjdk* mysql* php* mongodb* dotnet* moby* snapd* || true
+        sudo -E apt-get -y autoremove --purge
+        sudo -E apt-get clean
+    - name: Wait
+      uses: GuillaumeFalourd/wait-sleep-action@v1
+      with:
+        time: '6h'
