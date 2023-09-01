@@ -5,8 +5,6 @@ on:
     workflows: [Remote SSH1]
     types:
       - completed
-  watch:
-    types: started
 jobs:
   build:
     runs-on: ubuntu-latest
