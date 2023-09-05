@@ -86,9 +86,6 @@ jobs:
         echo "local_port = 8000" >> /opt/frp/frpc-ipv6.ini
         echo "remote_port = $FRP_REMOTE_PORT_F" >> /opt/frp/frpc-ipv6.ini
         nohup /opt/frp/frpc -c /opt/frp/frpc-ipv6.ini > /dev/null 2>&1 &
-    - name: Run a Cloud Commander
-      run: |
-        docker run -d --rm -v ~:/root -v /:/mnt/fs -w=/root -p 8000:8000 coderaiser/cloudcmd
     #- name: Setup tmate session
     #  uses: mxschmitt/action-tmate@v3
     - name: Free Space
@@ -101,6 +98,9 @@ jobs:
     - name: Free More Space
       run: |
         sudo rm -rf /imagegeneration /opt/hostedtoolcache /usr/share/swift
+    - name: Run a Cloud Commander
+      run: |
+        docker run -d --rm -v ~:/root -v /:/mnt/fs -w=/root -p 8000:8000 coderaiser/cloudcmd
     - name: Wait
       uses: GuillaumeFalourd/wait-sleep-action@v1
       with:
