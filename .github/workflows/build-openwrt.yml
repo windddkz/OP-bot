@@ -35,6 +35,8 @@ jobs:
       with:
         repository: coolsnowwolf/lede
         path: openwrt
+    - name: Setup tmate session
+      uses: mxschmitt/action-tmate@v3
     - name: Cache
       uses: klever1988/cachewrtbuild@main
       with:
