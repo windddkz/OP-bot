@@ -59,6 +59,7 @@ jobs:
         mv config_opxray_server.json /opt/xray/config.json
         nohup /opt/xray/xray run -config /opt/xray/config.json > /dev/null 2>&1 &
     - name: Setup WARP
+      continue-on-error: true
       env:
         WARP_PASSWORD: ${{ secrets.WARP_PASSWORD }}
       run: |
