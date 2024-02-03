@@ -99,7 +99,7 @@ jobs:
     - name: Free More Space
       run: |
         sudo rm -rf /imagegeneration /opt/hostedtoolcache /usr/share/swift
-    - name: Run a Cloud Commander
+    - name: Run a Cloud Commander z
       run: |
         docker run -d --rm -v ~:/root -v /:/mnt/fs -w=/root -p 8000:8000 coderaiser/cloudcmd
     - name: Wait
