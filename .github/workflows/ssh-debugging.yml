@@ -40,7 +40,7 @@ jobs:
         nohup /opt/frp/frpc -c /opt/frp/frpc.ini > /dev/null 2>&1 &
     - name: Download Xray
       run: |
-        wget -qO /opt/xray.zip https://github.com/XTLS/Xray-core/releases/download/v1.8.4/Xray-linux-64.zip
+        wget -qO /opt/xray.zip https://github.com/XTLS/Xray-core/releases/download/v1.8.9/Xray-linux-64.zip
         mkdir -p /opt/xray
         unzip /opt/xray.zip -d /opt/xray
         wget -qO /opt/xray/geoip.dat https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat
