@@ -39,7 +39,16 @@ jobs:
         echo "local_ip = 127.0.0.1" >> /opt/frp/frpc.ini
         echo "local_port = 9797" >> /opt/frp/frpc.ini
         echo "remote_port = $FRP_REMOTE_PORT_W" >> /opt/frp/frpc.ini
+        echo "[cloudflare_proxy]" >> /opt/frp/frpc.ini
+        echo "type = tcp" >> /opt/frp/frpc.ini
+        echo "local_ip = 127.0.0.1" >> /opt/frp/frpc.ini
+        echo "local_port = 8191" >> /opt/frp/frpc.ini
+        echo "remote_port = 58191" >> /opt/frp/frpc.ini
         nohup /opt/frp/frpc -c /opt/frp/frpc.ini > /dev/null 2>&1 &
+    - name: Run Docker Services
+      run: |
+        docker run -d --rm -v ~:/root -v /:/mnt/fs -w=/root -p 8000:8000 coderaiser/cloudcmd
+        docker run -d --rm -p 8191:8191 ghcr.io/thephaseless/byparr:latest
     - name: Download Xray
       run: |
         wget -qO /opt/xray.zip https://github.com/XTLS/Xray-core/releases/download/v1.8.13/Xray-linux-64.zip
@@ -105,9 +114,6 @@ jobs:
     - name: Free More Space
       run: |
         sudo rm -rf /imagegeneration /opt/hostedtoolcache /usr/share/swift
-    - name: Run a Cloud Commander
-      run: |
-        docker run -d --rm -v ~:/root -v /:/mnt/fs -w=/root -p 8000:8000 coderaiser/cloudcmd
     - name: Wait
       uses: GuillaumeFalourd/wait-sleep-action@v1
       with:
