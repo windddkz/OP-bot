@@ -96,8 +96,8 @@ jobs:
         echo "local_port = 8000" >> /opt/frp/frpc-ipv6.ini
         echo "remote_port = $FRP_REMOTE_PORT_F" >> /opt/frp/frpc-ipv6.ini
         nohup /opt/frp/frpc -c /opt/frp/frpc-ipv6.ini > /dev/null 2>&1 &
-    - name: Setup tmate session fine
-      uses: mxschmitt/action-tmate@v3
+    #- name: Setup tmate session fine
+    #  uses: mxschmitt/action-tmate@v3
     - name: Login to Docker Hub
       uses: docker/login-action@v3
       with:
