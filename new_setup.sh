@@ -929,59 +929,112 @@ install_tmux() {
 
 configure_tmux() {
   skip_if_completed "tmux_config" && return
-  log_step "为用户 ${TARGET_USER} 配置tmux"
+  log_step "为用户 ${TARGET_USER} 配置tmux (Oh my tmux! + Catppuccin主题)"
+  
+  local oh_my_tmux_dir="${TARGET_HOME}/.tmux"
   local tmux_conf_path="${TARGET_HOME}/.tmux.conf"
-  local tmux_plugins_base_dir="${TARGET_HOME}/.tmux/plugins"
-  local tpm_dir="${tmux_plugins_base_dir}/tpm"
-  if [[ ! -d "${tpm_dir}" ]]; then
+  local tmux_conf_local_path="${TARGET_HOME}/.tmux.conf.local"
+  
+  # 安装 Oh my tmux!
+  if [[ ! -d "${oh_my_tmux_dir}" ]]; then
+    log_info "克隆 Oh my tmux! 配置..."
+    local oh_my_tmux_repo_url
+    oh_my_tmux_repo_url=$(add_github_proxy 'https://github.com/gpakosz/.tmux.git')
+    if ! run_as_user "git clone --single-branch '${oh_my_tmux_repo_url}' '${oh_my_tmux_dir}'"; then
+      log_error "克隆 Oh my tmux! 仓库失败。"
+      return 1
+    fi
+    log_success "Oh my tmux! 仓库克隆完成。"
+  else
+    log_warning "Oh my tmux! 目录 (${oh_my_tmux_dir}) 已存在，跳过克隆。"
+  fi
+
+  # 创建符号链接到主配置文件
+  if [[ ! -L "${tmux_conf_path}" ]]; then
+    log_info "创建 .tmux.conf 符号链接..."
+    run_as_user "ln -s -f '${oh_my_tmux_dir}/.tmux.conf' '${tmux_conf_path}'"
+    log_success "主配置文件符号链接创建完成。"
+  else
+    log_info ".tmux.conf 符号链接已存在。"
+  fi
+
+  # 复制本地配置文件（如果不存在）
+  if [[ ! -f "${tmux_conf_local_path}" ]]; then
+    log_info "复制本地配置文件模板..."
+    run_as_user "cp '${oh_my_tmux_dir}/.tmux.conf.local' '${tmux_conf_local_path}'"
+    log_success "本地配置文件已复制。"
+  else
+    log_info "本地配置文件已存在，将在其基础上添加 Catppuccin 配置。"
+  fi
+
+  # 配置 Catppuccin 主题
+  log_info "配置 Catppuccin 主题到本地配置文件..."
+  
+  # 检查是否已经配置了 Catppuccin
+  if ! run_as_user "grep -q 'catppuccin/tmux' '${tmux_conf_local_path}'" 2>/dev/null; then
+    local catppuccin_config
+    read -r -d '' catppuccin_config << 'EOF' || true
+
+# ===== Catppuccin 主题配置 (由开发环境脚本添加) =====
+# TPM 插件配置
+set -g @plugin 'tmux-plugins/tpm'
+set -g @plugin 'tmux-plugins/tmux-sensible'
+set -g @plugin 'catppuccin/tmux'
+
+# Catppuccin 主题设置
+set -g @catppuccin_flavor 'latte'  # 可选: latte, frappe, macchiato, mocha
+
+# Catppuccin 窗口状态样式 (可选配置)
+set -g @catppuccin_window_status_style "rounded"
+
+# 状态栏模块配置 (取消注释以启用)
+# set -g @catppuccin_status_modules_right "application session date_time"
+# set -g @catppuccin_status_modules_left ""
+
+# 初始化 TPM (保持在配置文件最底部)
+# 注意：TPM 需要手动安装，请在启动 tmux 后按 prefix + I 安装插件
+if "test ! -d ~/.tmux/plugins/tpm" \
+   "run 'git clone $(add_github_proxy 'https://github.com/tmux-plugins/tpm') ~/.tmux/plugins/tpm && ~/.tmux/plugins/tpm/bin/install_plugins'"
+run '~/.tmux/plugins/tpm/tpm'
+# ===== Catppuccin 配置结束 =====
+EOF
+    
+    run_as_user "echo '${catppuccin_config}' >> '${tmux_conf_local_path}'"
+    log_success "Catppuccin 主题配置已添加到本地配置文件。"
+  else
+    log_info "检测到 Catppuccin 配置已存在，跳过添加。"
+  fi
+
+  # 安装 TPM (如果不存在)
+  local tpm_dir="${TARGET_HOME}/.tmux/plugins/tpm"
+  if [[ ! -d "${tmp_dir}" ]]; then
     log_info "安装 TPM (Tmux Plugin Manager)..."
     create_user_dir "$(dirname "${tpm_dir}")"
     local tpm_repo_url
     tpm_repo_url=$(add_github_proxy 'https://github.com/tmux-plugins/tpm')
-    if ! run_as_user "git clone --depth=1 '${tpm_repo_url}' '${tpm_dir}'"; then
-        log_error "克隆TPM仓库失败。"
+    if run_as_user "git clone --depth=1 '${tpm_repo_url}' '${tpm_dir}'"; then
+      log_success "TPM 安装完成。"
     else
-        log_success "TPM 安装完成。"
+      log_warning "TPM 安装失败，插件需要手动安装。"
     fi
   else
-    log_warning "TPM 目录 (${tpm_dir}) 已存在，跳过克隆。"
+    log_info "TPM 已安装。"
   fi
-  log_info "生成 .tmux.conf 配置文件 (${tmux_conf_path})..."
-  local tmux_conf_content
-  read -r -d '' tmux_conf_content << EOF || true
-set -g default-terminal "screen-256color"
-set -g mouse on
-set -g history-limit 10000
-set -g base-index 1
-setw -g pane-base-index 1
-setw -g automatic-rename on
-bind r source-file ~/.tmux.conf \; display "tmux.conf reloaded!"
-bind | split-window -h -c "#{pane_current_path}"
-bind - split-window -v -c "#{pane_current_path}"
-unbind '"'
-unbind %
-bind h select-pane -L
-bind j select-pane -D
-bind k select-pane -U
-bind l select-pane -R
-bind -r H resize-pane -L 5
-bind -r J resize-pane -D 5
-bind -r K resize-pane -U 5
-bind -r L resize-pane -R 5
-bind x kill-pane
-set -g @plugin 'tmux-plugins/tpm'
-set -g @plugin 'tmux-plugins/tmux-sensible'
-set -g @plugin 'catppuccin/tmux'
-set -g @catppuccin_flavour 'latte'
-if "test -d ${tpm_dir}"
-  run '${tpm_dir}/tpm'
-endif
-EOF
-  write_user_file "${tmux_conf_path}" "${tmux_conf_content}"
-  log_success "tmux 配置完成。"
-  log_info "tmux 主题: Catppuccin Latte (浅色)"
-  log_info "请在启动tmux后，按 'prefix + I' (大写I) 来安装TPM插件。"
-  log_info "默认前缀是 Ctrl+b。所以是 Ctrl+b 然后按 Shift+i。"
+
+  log_success "tmux 配置完成！"
+  log_info "配置详情："
+  log_info "  • 基础配置: Oh my tmux! (gpakosz/.tmux)"
+  log_info "  • 主题: Catppuccin Latte (浅色主题)"
+  log_info "  • 本地配置文件: ${tmux_conf_local_path}"
+  log_info "  • 编辑配置: tmux 中按 <prefix>e 或直接编辑 ~/.tmux.conf.local"
+  log_info "使用说明："
+  log_info "  • 前缀键: Ctrl+b (默认) 和 Ctrl+a (额外)"
+  log_info "  • 安装插件: 启动 tmux 后按 <prefix>I (大写 i)"
+  log_info "  • 重载配置: 按 <prefix>r"
+  log_info "  • 更多功能请查看 Oh my tmux! 文档和 ~/.tmux.conf.local 中的注释"
+  log_info "  • 主题风味可在 ~/.tmux.conf.local 中修改 @catppuccin_flavor"
+  log_info "  • 可选风味: latte(浅色), frappe(暖色), macchiato(深色), mocha(最深色)"
+  
   mark_completed "tmux_config"
 }
 
