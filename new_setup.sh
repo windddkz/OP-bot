@@ -742,17 +742,8 @@ install_docker() {
           docker_version="${latest_version}"
           log_success "获取到最新版本: ${docker_version}"
         else
-          log_warning "从endoflife.date获取最新版本失败，尝试备用方法..."
-
-          local github_api_url
-          github_api_url="$(add_github_proxy 'https://api.github.com/repos/docker/docker-ce/releases/latest')"
-          if latest_version="$(curl -fsSL "${github_api_url}" 2>/dev/null | jq -r '.tag_name' 2>/dev/null | sed 's/^v//')" && [[ -n "${latest_version}" && "${latest_version}" != "null" ]]; then
-            docker_version="${latest_version}"
-            log_success "通过GitHub API获取到版本: ${docker_version}"
-          else
-            log_warning "所有获取最新版本的方法都失败，使用默认版本: ${default_version}"
-            docker_version="${default_version}"
-          fi
+          log_warning "所有获取最新版本的方法都失败，使用默认版本: ${default_version}"
+          docker_version="${default_version}"
         fi
       else
         log_warning "jq不可用，使用默认版本: ${default_version}"
@@ -1037,13 +1028,6 @@ SocketGroup=docker
 [Install]
 WantedBy=sockets.target
 EOF
-
-  # 禁用SELinux（如果是RedHat系）
-  if [[ -e /etc/centos-release || -e /etc/redhat-release ]]; then
-    log_info "检测到CentOS/RedHat系统，禁用SELinux..."
-    ${SUDO_CMD} setenforce 0 2>/dev/null || true
-    ${SUDO_CMD} sed -ir "s/^SELINUX=.*/SELINUX=disabled/" /etc/selinux/config 2>/dev/null || true
-  fi
 
   # 启动服务
   if command -v systemctl &>/dev/null; then
