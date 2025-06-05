@@ -968,47 +968,9 @@ configure_tmux() {
     log_info "本地配置文件已存在，将在其基础上添加 Catppuccin 配置。"
   fi
 
-  # 配置 Catppuccin 主题
-  log_info "配置 Catppuccin 主题到本地配置文件..."
-  
-  # 检查是否已经配置了 Catppuccin
-  if ! run_as_user "grep -q 'catppuccin/tmux' '${tmux_conf_local_path}'" 2>/dev/null; then
-    local catppuccin_config
-    read -r -d '' catppuccin_config << 'EOF' || true
-
-# ===== Catppuccin 主题配置 (由开发环境脚本添加) =====
-# TPM 插件配置
-set -g @plugin 'tmux-plugins/tpm'
-set -g @plugin 'tmux-plugins/tmux-sensible'
-set -g @plugin 'catppuccin/tmux'
-
-# Catppuccin 主题设置
-set -g @catppuccin_flavor 'latte'  # 可选: latte, frappe, macchiato, mocha
-
-# Catppuccin 窗口状态样式 (可选配置)
-set -g @catppuccin_window_status_style "rounded"
-
-# 状态栏模块配置 (取消注释以启用)
-# set -g @catppuccin_status_modules_right "application session date_time"
-# set -g @catppuccin_status_modules_left ""
-
-# 初始化 TPM (保持在配置文件最底部)
-# 注意：TPM 需要手动安装，请在启动 tmux 后按 prefix + I 安装插件
-if "test ! -d ~/.tmux/plugins/tpm" \
-   "run 'git clone $(add_github_proxy 'https://github.com/tmux-plugins/tpm') ~/.tmux/plugins/tpm && ~/.tmux/plugins/tpm/bin/install_plugins'"
-run '~/.tmux/plugins/tpm/tpm'
-# ===== Catppuccin 配置结束 =====
-EOF
-    
-    run_as_user "echo '${catppuccin_config}' >> '${tmux_conf_local_path}'"
-    log_success "Catppuccin 主题配置已添加到本地配置文件。"
-  else
-    log_info "检测到 Catppuccin 配置已存在，跳过添加。"
-  fi
-
-  # 安装 TPM (如果不存在)
+  # 安装 TPM (如果不存在) - 在配置前先安装
   local tpm_dir="${TARGET_HOME}/.tmux/plugins/tpm"
-  if [[ ! -d "${tmp_dir}" ]]; then
+  if [[ ! -d "${tpm_dir}" ]]; then
     log_info "安装 TPM (Tmux Plugin Manager)..."
     create_user_dir "$(dirname "${tpm_dir}")"
     local tpm_repo_url
@@ -1022,6 +984,42 @@ EOF
     log_info "TPM 已安装。"
   fi
 
+  # 配置 Catppuccin 主题
+  log_info "配置 Catppuccin 主题到本地配置文件..."
+  
+  # 检查是否已经配置了 Catppuccin
+  if ! run_as_user "grep -q 'catppuccin/tmux' '${tmux_conf_local_path}'" 2>/dev/null; then
+    local catppuccin_config
+    catppuccin_config=$(cat << 'EOF'
+
+# ===== Catppuccin 主题配置 (由开发环境脚本添加) =====
+# TPM 插件配置
+set -g @plugin 'tmux-plugins/tpm'
+set -g @plugin 'tmux-plugins/tmux-sensible'
+set -g @plugin 'catppuccin/tmux'
+
+# Catppuccin 主题设置
+set -g @catppuccin_flavour 'latte'  # 可选: latte, frappe, macchiato, mocha
+
+# Catppuccin 窗口状态样式 (可选配置)
+set -g @catppuccin_window_status_style "rounded"
+
+# 状态栏模块配置 (取消注释以启用)
+# set -g @catppuccin_status_modules_right "application session date_time"
+# set -g @catppuccin_status_modules_left ""
+
+# 初始化 TPM (保持在配置文件最底部)
+run '~/.tmux/plugins/tpm/tpm'
+# ===== Catppuccin 配置结束 =====
+EOF
+)
+    
+    run_as_user "echo '${catppuccin_config}' >> '${tmux_conf_local_path}'"
+    log_success "Catppuccin 主题配置已添加到本地配置文件。"
+  else
+    log_info "检测到 Catppuccin 配置已存在，跳过添加。"
+  fi
+
   log_success "tmux 配置完成！"
   log_info "配置详情："
   log_info "  • 基础配置: Oh my tmux! (gpakosz/.tmux)"
@@ -1033,7 +1031,7 @@ EOF
   log_info "  • 安装插件: 启动 tmux 后按 <prefix>I (大写 i)"
   log_info "  • 重载配置: 按 <prefix>r"
   log_info "  • 更多功能请查看 Oh my tmux! 文档和 ~/.tmux.conf.local 中的注释"
-  log_info "  • 主题风味可在 ~/.tmux.conf.local 中修改 @catppuccin_flavor"
+  log_info "  • 主题风味可在 ~/.tmux.conf.local 中修改 @catppuccin_flavour"
   log_info "  • 可选风味: latte(浅色), frappe(暖色), macchiato(深色), mocha(最深色)"
   
   mark_completed "tmux_config"
