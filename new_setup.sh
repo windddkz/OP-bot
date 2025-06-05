@@ -2,7 +2,7 @@
 # Debian/Ubuntu 一键开发环境配置脚本 (优化版)
 # 支持root用户运行、自动配置sudo、修复PATH、SSH配置、脚本内GitHub链接代理等
 # 融合了优化的Docker安装和系统检查功能
-# 新增：支持根据地区配置镜像源和代理
+# 新增：支持根据地区配置镜像源和代理、Docker安装方式选择、增强vim配置
 
 set -euo pipefail
 trap 'echo -e "\033[0;31m[ERROR]\033[0m 第${LINENO}行命令执行失败：${BASH_COMMAND}"; exit 1' ERR
@@ -19,6 +19,7 @@ TARGET_USER=""
 TARGET_HOME=""
 SUDO_CMD=""
 INSTALL_EXTRA_TOOLS=false
+DOCKER_INSTALL_METHOD=""
 
 # 中国大陆地区配置控制
 IN_CHINA="${IN_CHINA:-auto}"
@@ -220,7 +221,30 @@ configure_installation_options() {
   log_step "配置安装选项"
   
   echo ""
-  log_prompt "额外开发工具包括："
+  log_prompt "1. Docker安装方式选择："
+  echo "  • apt方式: 使用Docker官方APT仓库安装 (推荐，自动更新)"
+  echo "  • 二进制方式: 下载Docker二进制文件安装 (可选择特定版本)"
+  echo ""
+  
+  while [[ -z "${DOCKER_INSTALL_METHOD}" ]]; do
+    read -rp "请选择Docker安装方式 (apt/binary) [apt]: " docker_method
+    case "${docker_method,,}" in
+      "" | "apt")
+        DOCKER_INSTALL_METHOD="apt"
+        log_success "已选择：APT仓库安装方式"
+        ;;
+      "binary" | "bin")
+        DOCKER_INSTALL_METHOD="binary"
+        log_success "已选择：二进制文件安装方式"
+        ;;
+      *)
+        log_error "无效选择，请输入 apt 或 binary"
+        ;;
+    esac
+  done
+  
+  echo ""
+  log_prompt "2. 额外开发工具包括："
   echo "  • Node.js (LTS)"
   echo "  • Python3-pip, JDK, Go, Ruby, PHP"
   echo "  • 数据库客户端 (MySQL, PostgreSQL, Redis, SQLite)"
@@ -392,7 +416,7 @@ check_iptables() {
       . /etc/os-release
       case "${ID,,}" in
         debian)
-          if [[ "${VERSION_ID}" == "11" ]] || [[ "${VERSION_ID}" == "12" ]]; then
+          if [[ "${VERSION_ID}" == "11" ]] || [[ "${VERSION_ID}" == "12" ]] || [[ "${VERSION_ID}" == "13" ]]; then
             ${SUDO_CMD} apt update
             ${SUDO_CMD} apt install -y iptables iptables-persistent
             log_success "iptables安装完成"
@@ -662,19 +686,21 @@ install_powerlevel10k() {
   mark_completed "powerlevel10k"
 }
 
-# ---- 步骤 7：配置 Vim (使用 Catppuccin 浅色主题) ----
+# ---- 步骤 7：配置 Vim (融合 amix/vimrc 和 Catppuccin 主题) ----
 configure_vim() {
   skip_if_completed "vim" && return
-  log_step "配置Vim (Catppuccin浅色主题)"
+  log_step "配置Vim (融合amix/vimrc配置 + Catppuccin浅色主题)"
   
-  log_info "配置 Vim 使用 Catppuccin 浅色主题…"
+  log_info "配置 Vim 并融合增强配置..."
   
   # 创建vim配置目录
   local vim_dir="${TARGET_HOME}/.vim"
   local colors_dir="${vim_dir}/colors"
+  local autoload_dir="${vim_dir}/autoload"
   
   create_user_dir "${vim_dir}"
   create_user_dir "${colors_dir}"
+  create_user_dir "${autoload_dir}"
   
   # 克隆 Catppuccin vim 主题
   local catppuccin_tmp_dir="$(mktemp -d)"
@@ -691,110 +717,357 @@ configure_vim() {
   
   rm -rf "${catppuccin_tmp_dir}"
   
-  # 创建 .vimrc 配置文件
+  # 下载 vim-plug 插件管理器
+  log_info "安装 vim-plug 插件管理器..."
+  curl -fSLo "${autoload_dir}/plug.vim" --create-dirs \
+    "$(add_github_proxy 'https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim')"
+  
+  if [[ "${IS_ROOT}" == "true" ]]; then
+    chown -R "${TARGET_USER}:${TARGET_USER}" "${autoload_dir}"
+  fi
+  
+  # 创建融合了 amix/vimrc 的 .vimrc 配置文件
   local vimrc_content='
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" 融合了 amix/vimrc 的增强 Vim 配置 + Catppuccin 主题
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" => 插件管理 (vim-plug)
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+call plug#begin("~/.vim/plugged")
+
+" 实用插件
+Plug '\''preservim/nerdtree'\''
+Plug '\''junegunn/fzf'\'', { '\''do'\'': { -> fzf#install() } }
+Plug '\''junegunn/fzf.vim'\''
+Plug '\''tpope/vim-fugitive'\''
+Plug '\''airblade/vim-gitgutter'\''
+Plug '\''vim-airline/vim-airline'\''
+Plug '\''vim-airline/vim-airline-themes'\''
+Plug '\''jiangmiao/auto-pairs'\''
+Plug '\''tpope/vim-surround'\''
+Plug '\''scrooloose/nerdcommenter'\''
+Plug '\''dense-analysis/ale'\''
+
+call plug#end()
+
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" => 基本设置
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 " 启用真彩色支持
 set termguicolors
 
-" 基本设置
+" 显示设置
 set number
 set relativenumber
+set ruler
+set showcmd
+set showmode
+set laststatus=2
+set wildmenu
+set wildmode=longest,list,full
+set showmatch
+set matchtime=2
+
+" 编码设置
+set encoding=utf-8
+set fileencodings=utf-8,gb2312,gb18030,gbk,ucs-bom,cp936,latin1
+set fileformat=unix
+
+" 缩进和制表符
 set expandtab
 set tabstop=4
 set shiftwidth=4
+set softtabstop=4
 set smartindent
 set autoindent
+set cindent
+
+" 搜索设置
 set hlsearch
 set incsearch
 set ignorecase
 set smartcase
-set wildmenu
-set ruler
-set showcmd
-set laststatus=2
-set backspace=indent,eol,start
-set encoding=utf-8
-set fileencodings=utf-8,gb2312,gb18030,gbk,ucs-bom,cp936,latin1
 
+" 折行和滚动
+set wrap
+set linebreak
+set scrolloff=8
+set sidescrolloff=15
+set sidescroll=1
+
+" 备份和撤销
+set nobackup
+set nowritebackup
+set noswapfile
+set undofile
+set undodir=~/.vim/undodir
+
+" 其他设置
+set backspace=indent,eol,start
+set mouse=a
+set clipboard=unnamedplus
+set history=1000
+set updatetime=300
+set timeoutlen=500
+set hidden
+set splitbelow
+set splitright
+
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" => 颜色主题
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 " 启用语法高亮
 syntax enable
 
 " 设置 Catppuccin 浅色主题
-colorscheme catppuccin_latte
+try
+    colorscheme catppuccin_latte
+catch
+    colorscheme default
+endtry
 
 " 启用文件类型检测
 filetype on
 filetype plugin on
 filetype indent on
 
-" 鼠标支持
-set mouse=a
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" => 状态栏配置
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" Airline 配置
+let g:airline_theme='\''catppuccin_latte'\''
+let g:airline_powerline_fonts = 1
+let g:airline#extensions#tabline#enabled = 1
+let g:airline#extensions#tabline#formatter = '\''default'\''
 
-" 搜索高亮
-set hlsearch
-" 按 ESC 清除搜索高亮
-nnoremap <ESC> :nohlsearch<CR>
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" => 键盘映射
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" 设置 leader 键
+let mapleader = " "
+let g:mapleader = " "
 
-" 显示匹配的括号
-set showmatch
+" 基本操作
+nnoremap <leader>w :w!<cr>
+nnoremap <leader>q :q<cr>
+nnoremap <leader>wq :wq<cr>
 
-" 自动补全
-set wildmode=longest,list,full
+" 清除搜索高亮
+nnoremap <silent> <leader><cr> :noh<cr>
 
-" 历史记录
-set history=1000
+" 文件操作
+nnoremap <leader>e :edit 
+nnoremap <leader>o :browse confirm e<cr>
 
-" 状态栏显示
-set statusline=%F%m%r%h%w\ [FORMAT=%{&ff}]\ [TYPE=%Y]\ [POS=%l,%v][%p%%]\ %{strftime(\"%d/%m/%y\ -\ %H:%M\")}
+" 缓冲区导航
+nnoremap <leader>l :bnext<cr>
+nnoremap <leader>h :bprevious<cr>
+nnoremap <leader>bd :bdelete<cr>
 
-" 快捷键映射
-" 保存文件
-nnoremap <C-s> :w<CR>
-inoremap <C-s> <Esc>:w<CR>a
+" 窗口管理
+nnoremap <leader>v <C-w>v
+nnoremap <leader>s <C-w>s
+nnoremap <leader>c <C-w>c
 
-" 退出
-nnoremap <C-q> :q<CR>
+" 窗口导航
+nnoremap <C-j> <C-W>j
+nnoremap <C-k> <C-W>k
+nnoremap <C-h> <C-W>h
+nnoremap <C-l> <C-W>l
 
-" 复制到系统剪贴板
-vnoremap <C-c> "+y
+" 重新调整窗口大小
+nnoremap <M-j> :resize +5<cr>
+nnoremap <M-k> :resize -5<cr>
+nnoremap <M-h> :vertical resize -5<cr>
+nnoremap <M-l> :vertical resize +5<cr>
 
-" 从系统剪贴板粘贴
-nnoremap <C-v> "+p
-inoremap <C-v> <Esc>"+pa
-
-" 窗口切换
-nnoremap <C-h> <C-w>h
-nnoremap <C-j> <C-w>j
-nnoremap <C-k> <C-w>k
-nnoremap <C-l> <C-w>l
-
-" 标签页操作
-nnoremap <C-t> :tabnew<CR>
-nnoremap <C-w> :tabclose<CR>
-nnoremap <C-PageUp> :tabprev<CR>
-nnoremap <C-PageDown> :tabnext<CR>
-
-" 文件树 (如果安装了 netrw)
-nnoremap <F2> :Explore<CR>
+" 移动行
+nnoremap <A-j> :m .+1<CR>==
+nnoremap <A-k> :m .-2<CR>==
+inoremap <A-j> <Esc>:m .+1<CR>==gi
+inoremap <A-k> <Esc>:m .-2<CR>==gi
+vnoremap <A-j> :m '\''<\'\'>+1<CR>gv=gv
+vnoremap <A-k> :m '\''<\'\'><-2<CR>gv=gv
 
 " 缩进操作
 vnoremap < <gv
 vnoremap > >gv
 
-" 行移动
-nnoremap <A-j> :m .+1<CR>==
-nnoremap <A-k> :m .-2<CR>==
-inoremap <A-j> <Esc>:m .+1<CR>==gi
-inoremap <A-k> <Esc>:m .-2<CR>==gi
-vnoremap <A-j> :m '\''>+1<CR>gv=gv
-vnoremap <A-k> :m '\''<-2<CR>gv=gv
+" 复制粘贴
+vnoremap <leader>y "+y
+nnoremap <leader>p "+p
+vnoremap <leader>p "+p
+
+" 全选
+nnoremap <leader>a ggVG
+
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" => 插件快捷键
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" NERDTree
+nnoremap <leader>n :NERDTreeToggle<cr>
+nnoremap <leader>nb :NERDTreeFromBookmark 
+nnoremap <leader>nf :NERDTreeFind<cr>
+
+" FZF
+nnoremap <leader>f :Files<cr>
+nnoremap <leader>b :Buffers<cr>
+nnoremap <leader>rg :Rg<cr>
+nnoremap <leader>/ :BLines<cr>
+
+" Git 操作
+nnoremap <leader>gs :Git<cr>
+nnoremap <leader>gd :Gdiff<cr>
+nnoremap <leader>gc :Git commit<cr>
+nnoremap <leader>gb :Git blame<cr>
+nnoremap <leader>gl :Git log<cr>
+
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" => 插件配置
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" NERDTree 配置
+let g:NERDTreeWinPos = "left"
+let g:NERDTreeWinSize = 35
+let g:NERDTreeShowHidden = 1
+let g:NERDTreeMinimalUI = 1
+let g:NERDTreeDirArrows = 1
+let g:NERDTreeDeleteEmptyDirs = 1
+
+" Git Gutter 配置
+let g:gitgutter_enabled = 1
+let g:gitgutter_map_keys = 0
+let g:gitgutter_highlight_linenrs = 1
+
+" ALE 配置
+let g:ale_sign_error = '\''✗'\''
+let g:ale_sign_warning = '\''⚠'\''
+let g:ale_echo_msg_format = '\''[%linter%] %s [%severity%]'\''
+
+" FZF 配置
+let g:fzf_preview_window = ['\''right:50%'\'', '\''ctrl-/'\''  ]
+let g:fzf_layout = { '\''down'\'': '\''40%'\'' }
+
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" => 自动命令
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+augroup vimrcEx
+  autocmd!
+  
+  " 返回到上次编辑位置
+  autocmd BufReadPost *
+     \ if line("'\''\\"") > 0 && line("'\''\\"") <= line("$") |
+     \   exe "normal! g`\\"" |
+     \ endif
+
+  " 自动删除行尾空格
+  autocmd BufWritePre * :%s/\s\+$//e
+  
+  " 特定文件类型设置
+  autocmd FileType html,css,scss,javascript,json,yaml,yml setlocal tabstop=2 shiftwidth=2
+  autocmd FileType python setlocal tabstop=4 shiftwidth=4
+  autocmd FileType go setlocal tabstop=4 shiftwidth=4 noexpandtab
+  
+augroup END
+
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" => 自定义函数
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" 清理缓冲区
+function! CleanEmptyBuffers()
+    let buffers = filter(range(1, bufnr('\''$'\'')), '\''buflisted(v:val) && empty(bufname(v:val)) && bufwinnr(v:val)<0 && !getbufvar(v:val, "&mod")'\'')
+    if !empty(buffers)
+        exe '\''bdelete '\'' . join(buffers, '\'' '\'')
+    endif
+endfunction
+nnoremap <leader>bc :call CleanEmptyBuffers()<cr>
+
+" 切换行号显示
+function! ToggleLineNumber()
+    if &number
+        set nonumber
+        set norelativenumber
+    else
+        set number
+        set relativenumber
+    endif
+endfunction
+nnoremap <leader>tn :call ToggleLineNumber()<cr>
+
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" => 搜索和替换增强
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" 可视模式下搜索选中文本
+vnoremap <silent> * :<C-u>call VisualSelection('\'''\'')<CR>/<C-R>=@/<CR><CR>
+vnoremap <silent> # :<C-u>call VisualSelection('\'''\'')<CR>?<C-R>=@/<CR><CR>
+
+function! VisualSelection(direction) range
+    let l:saved_reg = @"
+    execute "normal! vgvy"
+
+    let l:pattern = escape(@", "\\/.*'\''[]~")
+    let l:pattern = substitute(l:pattern, "\n$", "", "")
+
+    if a:direction == '\''gv'\''
+        call CmdLine("Ack \\"" . l:pattern . "\\" " )
+    elseif a:direction == '\''replace'\''
+        call CmdLine("%s" . '\''/'\'' . l:pattern . '\''/'\'' )
+    endif
+
+    let @/ = l:pattern
+    let @" = l:saved_reg
+endfunction
+
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" => 智能粘贴模式
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+function! WrapForTmux(s)
+    if !exists('\''$TMUX'\'')
+        return a:s
+    endif
+
+    let tmux_start = "\<Esc>Ptmux;"
+    let tmux_end = "\<Esc>\\"
+
+    return tmux_start . substitute(a:s, "\<Esc>", "\<Esc>\<Esc>", '\''g'\'') . tmux_end
+endfunction
+
+let &t_SI .= WrapForTmux("\<Esc>[?2004h")
+let &t_EI .= WrapForTmux("\<Esc>[?2004l")
+
+function! XTermPasteBegin()
+    set pastetoggle=<Esc>[201~
+    set paste
+    return ""
+endfunction
+
+inoremap <special> <expr> <Esc>[200~ XTermPasteBegin()
+
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" => 性能优化
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" 大文件优化
+autocmd BufWinEnter * if line2byte(line("$") + 1) > 1000000 | syntax clear | endif
+
+" 快速 ESC
+inoremap jk <Esc>
+inoremap kj <Esc>
+
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" => 最后的设置
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" 启动时自动安装插件
+autocmd VimEnter * if len(filter(values(g:plugs), '\''!isdirectory(v:val.dir)'\'')) | PlugInstall --sync | source $MYVIMRC | endif
 '
 
   write_user_file "${TARGET_HOME}/.vimrc" "${vimrc_content}"
   
-  log_success "Vim 配置完成 (Catppuccin 浅色主题)。"
+  log_success "Vim 配置完成 (融合amix/vimrc + Catppuccin 浅色主题)。"
   log_info "主题: catppuccin_latte (浅色)"
   log_info "配置文件: ${TARGET_HOME}/.vimrc"
+  log_info "插件管理: vim-plug (首次启动时自动安装插件)"
+  log_info "增强功能: NERDTree, FZF, Git集成, 代码检查等"
   mark_completed "vim"
 }
 
@@ -915,12 +1188,150 @@ get_docker_registry_mirrors() {
   fi
 }
 
-# ---- 步骤 10：安装 Docker (融合优化版本) ----
-install_docker() {
+# ---- 步骤 10：安装 Docker (APT方式) ----
+install_docker_apt() {
   skip_if_completed "docker" && return
-  log_step "安装Docker"
+  log_step "安装Docker (APT方式)"
   
-  log_info "安装 Docker…"
+  log_info "通过Docker官方APT仓库安装Docker..."
+
+  # 检查Docker是否已安装并运行
+  if systemctl is-active --quiet docker 2>/dev/null; then
+    local docker_version
+    docker_version=$(docker version --format '{{.Server.Version}}' 2>/dev/null || echo "unknown")
+    log_warning "Docker已安装并运行，版本: $docker_version"
+    mark_completed "docker"
+    return
+  fi
+
+  # 确保iptables已安装（Docker依赖）
+  check_iptables
+
+  log_info "卸载旧版本Docker包..."
+  for pkg in docker.io docker-doc docker-compose podman-docker containerd runc; do
+    ${SUDO_CMD} apt-get remove -y $pkg 2>/dev/null || true
+  done
+
+  log_info "安装依赖包..."
+  ${SUDO_CMD} apt-get update
+  ${SUDO_CMD} apt-get install -y ca-certificates curl
+
+  log_info "添加Docker官方GPG密钥..."
+  ${SUDO_CMD} install -m 0755 -d /etc/apt/keyrings
+  local docker_gpg_url="https://download.docker.com/linux/$(. /etc/os-release && echo "${ID}")/gpg"
+  ${SUDO_CMD} curl -fsSL "${docker_gpg_url}" -o /etc/apt/keyrings/docker.asc
+  ${SUDO_CMD} chmod a+r /etc/apt/keyrings/docker.asc
+
+  log_info "添加Docker APT仓库..."
+  . /etc/os-release
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/${ID} ${VERSION_CODENAME} stable" | \
+    ${SUDO_CMD} tee /etc/apt/sources.list.d/docker.list > /dev/null
+  ${SUDO_CMD} apt-get update
+
+  log_info "安装Docker CE..."
+  ${SUDO_CMD} apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+  # 创建docker组并添加用户
+  if command -v usermod &>/dev/null; then
+    ${SUDO_CMD} usermod -aG docker "${TARGET_USER}"
+  else
+    ${SUDO_CMD} /usr/sbin/usermod -aG docker "${TARGET_USER}"
+  fi
+
+  # 配置Docker daemon.json（根据地区配置镜像源）
+  log_info "配置Docker daemon.json..."
+  ${SUDO_CMD} mkdir -p /etc/docker
+
+  local registry_mirrors
+  local effective_mirror_setting=$(get_docker_registry_mirrors)
+  
+  if [[ "${effective_mirror_setting}" == "CN" ]]; then
+    registry_mirrors='"https://docker.m.daocloud.io",
+        "https://docker.1ms.run",
+        "https://ccr.ccs.tencentyun.com",
+        "https://hub.xdark.top",
+        "https://hub.fast360.xyz",
+        "https://docker-0.unsee.tech",
+        "https://docker.xuanyuan.me",
+        "https://docker.tbedu.top",
+        "https://docker.hlmirror.com",
+        "https://doublezonline.cloud",
+        "https://docker.melikeme.cn",
+        "https://image.cloudlayer.icu",
+        "https://dislabaiot.xyz",
+        "https://freeno.xyz",
+        "https://docker.kejilion.pro",
+        "https://docker.rainbond.cc"'
+    log_info "配置中国镜像加速器"
+  else
+    registry_mirrors=''
+    log_info "使用官方Docker Hub"
+  fi
+
+  ${SUDO_CMD} tee /etc/docker/daemon.json >/dev/null <<EOF
+{
+    "data-root": "/var/lib/docker",
+    "log-driver": "json-file",
+    "log-level": "warn",
+    "log-opts": {
+        "max-file": "3",
+        "max-size": "10m"
+    },
+    "max-concurrent-downloads": 10,
+    "max-concurrent-uploads": 10,$(if [[ -n "${registry_mirrors}" ]]; then echo "
+    \"registry-mirrors\": [
+        ${registry_mirrors}
+    ],"; fi)
+    "exec-opts": ["native.cgroupdriver=systemd"],
+    "live-restore": true,
+    "storage-driver": "overlay2"
+}
+EOF
+
+  # 启动Docker服务
+  log_info "启动Docker服务..."
+  ${SUDO_CMD} systemctl enable docker
+  ${SUDO_CMD} systemctl start docker
+
+  # 验证安装
+  sleep 3
+  if ${SUDO_CMD} systemctl is-active --quiet docker; then
+    log_success "Docker服务启动成功"
+    
+    local installed_version
+    installed_version="$(docker --version 2>/dev/null || echo "无法获取版本信息")"
+    log_info "已安装版本: ${installed_version}"
+
+    if docker info >/dev/null 2>&1; then
+      log_success "Docker运行测试通过"
+    else
+      log_warning "Docker已安装但可能无法正常运行，请检查配置"
+    fi
+  else
+    log_error "Docker服务启动失败，请检查日志: sudo journalctl -u docker.service"
+    return 1
+  fi
+
+  log_success "Docker (APT方式) 安装完成！"
+  log_warning "用户 ${TARGET_USER} 需要重新登录或运行 'newgrp docker' 以使docker组权限生效。"
+
+  local mirror_count
+  if [[ "${effective_mirror_setting}" == "CN" ]]; then
+    mirror_count="16"
+  else
+    mirror_count="0"
+  fi
+  log_info "Docker镜像配置完成，包含${mirror_count}个镜像源"
+
+  mark_completed "docker"
+}
+
+# ---- 步骤 10：安装 Docker (二进制方式) ----
+install_docker_binary() {
+  skip_if_completed "docker" && return
+  log_step "安装Docker (二进制方式)"
+  
+  log_info "通过二进制文件安装Docker..."
 
   # 检查Docker是否已安装并运行
   if systemctl is-active --quiet docker 2>/dev/null; then
@@ -1354,7 +1765,7 @@ EOF
     fi
   fi
 
-  log_success "Docker ${docker_version} 安装完成！"
+  log_success "Docker ${docker_version} (二进制方式) 安装完成！"
   log_warning "用户 ${TARGET_USER} 需要重新登录或运行 'newgrp docker' 以使docker组权限生效。"
 
   if [[ -f "${cache_file}" ]]; then
@@ -1372,12 +1783,32 @@ EOF
   mark_completed "docker"
 }
 
-# ---- 步骤 11：安装 Docker Compose (优化版本，与Docker逻辑一致) ----
+# Docker安装方式路由函数
+install_docker() {
+  if [[ "${DOCKER_INSTALL_METHOD}" == "apt" ]]; then
+    install_docker_apt
+  else
+    install_docker_binary
+  fi
+}
+
+# ---- 步骤 11：安装 Docker Compose ----
 install_docker_compose() {
   skip_if_completed "docker_compose" && return
   log_step "安装Docker Compose"
   
   log_info "安装 Docker Compose…"
+
+  # 如果是APT方式安装的Docker，Docker Compose插件应该已经安装
+  if [[ "${DOCKER_INSTALL_METHOD}" == "apt" ]]; then
+    if docker compose version &>/dev/null; then
+      local current_version
+      current_version="$(docker compose version --short 2>/dev/null || echo "unknown")"
+      log_success "Docker Compose (插件版本) 已通过APT安装，版本: ${current_version}"
+      mark_completed "docker_compose"
+      return
+    fi
+  fi
 
   # 检查是否已安装
   if command -v docker-compose &>/dev/null; then
@@ -1781,12 +2212,18 @@ else
   echo "  • 官方APT源 (保持默认配置)"
 fi)
   • zsh + Oh My Zsh + Powerlevel10k
-  • vim (Catppuccin 浅色主题 - catppuccin_latte)
+  • vim (融合amix/vimrc + Catppuccin浅色主题)
+    - 插件管理: vim-plug
+    - 实用插件: NERDTree, FZF, Git集成, 代码检查等
+    - 丰富的快捷键和自动命令
   • tmux (Catppuccin Latte 浅色主题, 前缀+I 安装插件)
   • Miniconda (conda init zsh/bash 已执行)
-  • Docker & Docker Compose (优化版本，一致的安装逻辑)
-    - Docker: 支持本地缓存和/opt/docker/down缓存
-    - Docker Compose: 支持本地缓存和版本选择
+  • Docker & Docker Compose (${DOCKER_INSTALL_METHOD}安装方式)
+$(if [[ "${DOCKER_INSTALL_METHOD}" == "apt" ]]; then
+    echo "    - APT方式: 使用Docker官方仓库，包含docker-compose插件"
+else
+    echo "    - 二进制方式: 支持本地缓存和/opt/docker/down缓存"
+fi)
 $(if [[ "${effective_mirror_setting}" == "CN" ]]; then
     echo "    - 配置了16个Docker镜像加速器 (中国大陆优化)"
 else
@@ -1805,17 +2242,26 @@ fi)
   • Git (基本配置)
   • 常用目录和 zsh 别名
 
-Vim配置亮点：
+Vim配置亮点 (融合增强版)：
   • 主题: Catppuccin Latte (浅色配色方案)
-  • 启用真彩色支持 (termguicolors)
-  • 丰富的快捷键配置
-  • 智能缩进和语法高亮
+  • 插件管理: vim-plug (自动安装)
+  • 实用插件: NERDTree, FZF, Git-fugitive, GitGutter, Airline等
+  • 智能快捷键: <Space>为leader键，丰富的快捷键映射
+  • 代码检查: ALE (Asynchronous Lint Engine)
+  • 文件导航: FZF模糊搜索，NERDTree文件树
+  • Git集成: vim-fugitive + GitGutter
+  • 自动命令: 记忆光标位置，自动清理空格等
   • 配置文件: ${TARGET_HOME}/.vimrc
 
 tmux配置亮点：
   • 主题: Catppuccin Latte (浅色)
   • 鼠标支持和历史记录优化
   • 自定义快捷键绑定
+
+Docker安装方式选择 (新增功能)：
+  • APT方式: 使用Docker官方APT仓库，自动更新，包含docker-compose插件
+  • 二进制方式: 下载特定版本，支持版本选择和缓存机制
+  • 用户可根据需求选择最适合的安装方式
 
 地区适配特性：
   • 自动检测地区 (时区、语言、IP等)
@@ -1830,44 +2276,70 @@ tmux配置亮点：
      - 新的 PATH 环境变量
   2. Vim & tmux 主题统一：
      - 都使用 Catppuccin Latte 浅色主题
-     - 在终端中使用体验一致
-  3. Docker & Docker Compose配置：
-     - 版本检查：已安装的Docker版本不能低于1.13.x
-     - 默认版本：Docker ${DOCKER_VERSION}, Docker Compose ${DOCKER_COMPOSE_VERSION}
-     - 缓存机制：安装包会缓存在 /tmp/ 目录
-     - 版本选择：支持环境变量或交互式输入
+     - Vim增强了amix/vimrc的实用配置
+     - 首次启动vim时会自动安装插件
+  3. Docker配置：
+     - 安装方式: ${DOCKER_INSTALL_METHOD}
+$(if [[ "${DOCKER_INSTALL_METHOD}" == "apt" ]]; then
+    echo "     - APT仓库安装，自动获取最新稳定版"
+    echo "     - docker-compose以插件形式安装"
+else
+    echo "     - 二进制安装，默认版本: Docker ${DOCKER_VERSION}, Docker Compose ${DOCKER_COMPOSE_VERSION}"
+    echo "     - 缓存机制：安装包会缓存在 /tmp/ 目录"
+fi)
 $(if [[ "${effective_mirror_setting}" == "CN" ]]; then
     echo "     - 镜像加速：支持16个国内镜像源（中国大陆地区）"
 else
     echo "     - 镜像配置：使用官方Docker Hub（非中国大陆地区）"
 fi)
-  4. 环境变量支持：
+  4. Vim插件使用：
+     - 首次启动会自动安装插件
+     - <Space>n: 打开/关闭文件树 (NERDTree)
+     - <Space>f: 文件搜索 (FZF)
+     - <Space>rg: 全文搜索 (Ripgrep)
+     - <Space>gs: Git状态 (Fugitive)
+     - 更多快捷键请查看 ~/.vimrc 配置文件
+  5. 环境变量支持：
      - IN_CHINA: 地区配置 (auto/true/false, 默认: auto)
-     - DOCKER_VERSION: 指定Docker版本 (默认: 28.2.2)
-     - DOCKER_COMPOSE_VERSION: 指定Docker Compose版本 (默认: v2.36.2)
+     - DOCKER_VERSION: 指定Docker版本 (二进制方式, 默认: 28.2.2)
+     - DOCKER_COMPOSE_VERSION: 指定Docker Compose版本 (二进制方式, 默认: v2.36.2)
 $(if [[ "${IN_CHINA}" == "true" ]]; then
     echo "     - GITHUB_PROXY: GitHub代理地址 (默认: https://ghfast.top)"
 else
     echo "     - GITHUB_PROXY: GitHub代理地址 (当前禁用，非中国大陆)"
 fi)
      - REGISTRY_MIRROR: Docker镜像源 (auto/CN/NONE, 默认: auto)
-  5. 验证安装：
+  6. 验证安装：
      - 'docker --version' 和 'docker info'
-     - 'docker-compose --version' 或 'docker compose version'
-     - 'vim --version' 查看Vim配置
+$(if [[ "${DOCKER_INSTALL_METHOD}" == "apt" ]]; then
+    echo "     - 'docker compose version' (插件方式)"
+else
+    echo "     - 'docker-compose --version' (独立二进制)"
+fi)
+     - 'vim --version' 查看Vim配置，启动vim查看插件
      - 其他工具版本检查
-  6. SSH密钥已配置，可测试 'ssh ${TARGET_USER}@127.0.0.1'
-  7. 状态管理：删除 $(get_status_file) 可重置安装状态
+  7. SSH密钥已配置，可测试 'ssh ${TARGET_USER}@127.0.0.1'
+  8. 状态管理：删除 $(get_status_file) 可重置安装状态
 
-缓存位置：
+$(if [[ "${DOCKER_INSTALL_METHOD}" == "binary" ]]; then
+echo "缓存位置：
   - Docker: /tmp/docker-${DOCKER_VERSION}.tgz, /opt/docker/down/docker-${DOCKER_VERSION}.tgz
-  - Docker Compose: /tmp/docker-compose-${DOCKER_COMPOSE_VERSION}-linux-\${arch}
+  - Docker Compose: /tmp/docker-compose-${DOCKER_COMPOSE_VERSION}-linux-\${arch}"
+else
+echo "APT安装方式：
+  - Docker通过官方APT仓库安装和管理
+  - 自动获取最新稳定版本和安全更新"
+fi)
 
 配置文件：
-  - Vim: ${TARGET_HOME}/.vimrc (Catppuccin Latte 主题)
-  - tmux: ${TARGET_HOME}/.tmux.conf (Catppuccin Latte 主题)
+  - Vim: ${TARGET_HOME}/.vimrc (融合amix/vimrc + Catppuccin Latte主题)
+  - tmux: ${TARGET_HOME}/.tmux.conf (Catppuccin Latte主题)
   - Docker: /etc/docker/daemon.json
-  - Docker Compose: 独立二进制文件安装
+$(if [[ "${DOCKER_INSTALL_METHOD}" == "apt" ]]; then
+    echo "  - Docker Compose: 作为docker插件安装"
+else
+    echo "  - Docker Compose: 独立二进制文件安装"
+fi)
 $(if [[ "${IN_CHINA}" == "true" ]]; then
     echo "  - APT源: /etc/apt/sources.list (阿里云镜像)"
 else
@@ -1908,45 +2380,48 @@ main() {
       echo "                         - true: 强制启用中国大陆配置"
       echo "                         - false: 强制禁用中国大陆配置"
       echo "  GITHUB_PROXY           GitHub代理前缀 (仅中国大陆时启用, 默认: https://ghfast.top)"
-      echo "  DOCKER_VERSION         Docker版本号 (默认: 28.2.2)"
-      echo "  DOCKER_COMPOSE_VERSION Docker Compose版本号 (默认: v2.36.2)"
+      echo "  DOCKER_VERSION         Docker版本号 (二进制方式, 默认: 28.2.2)"
+      echo "  DOCKER_COMPOSE_VERSION Docker Compose版本号 (二进制方式, 默认: v2.36.2)"
       echo "  REGISTRY_MIRROR        Docker镜像源 (auto/CN/NONE, 默认: auto)"
       echo "                         - auto: 根据地区自动配置"
       echo "                         - CN: 强制使用中国镜像源"
       echo "                         - NONE: 使用官方Docker Hub"
       echo ""
-      echo "地区适配特性 (新增):"
+      echo "新增功能 (Docker安装方式选择):"
+      echo "  ✓ APT方式 - 使用Docker官方APT仓库，推荐选择"
+      echo "    - 自动获取最新稳定版本"
+      echo "    - 包含docker-compose插件"
+      echo "    - 支持自动更新"
+      echo "  ✓ 二进制方式 - 下载指定版本的Docker二进制文件"
+      echo "    - 支持版本选择和缓存机制"
+      echo "    - 适合需要特定版本的场景"
+      echo ""
+      echo "增强功能 (Vim配置融合):"
+      echo "  ✓ 融合amix/vimrc配置 - 保留原有Catppuccin主题"
+      echo "  ✓ 插件管理系统 - vim-plug，自动安装实用插件"
+      echo "  ✓ 丰富快捷键 - <Space>为leader键，提高编辑效率"
+      echo "  ✓ Git集成 - fugitive + GitGutter，无缝Git操作"
+      echo "  ✓ 文件导航 - NERDTree + FZF，强大的文件管理"
+      echo "  ✓ 代码检查 - ALE引擎，实时代码质量检查"
+      echo ""
+      echo "地区适配特性:"
       echo "  ✓ 自动地区检测 - 基于时区、语言环境、IP地址等多种方式"
       echo "  ✓ 智能镜像配置 - 中国大陆启用阿里云APT源和Docker镜像加速"
       echo "  ✓ GitHub代理支持 - 仅在中国大陆时启用GitHub访问加速"
       echo "  ✓ 全球化友好 - 非中国地区保持原生官方源配置"
       echo ""
-      echo "现有特性 (优化版):"
-      echo "  ✓ 额外工具可选安装 - 脚本运行时可选择是否安装开发工具"
-      echo "  ✓ Vim Catppuccin浅色主题 - 使用catppuccin_latte浅色配色"
-      echo "  ✓ tmux Catppuccin浅色主题 - 与vim主题保持一致"
-      echo "  ✓ 增强的用户交互 - 彩色日志输出和步骤提示"
-      echo "  ✓ 优化的错误处理和状态管理"
-      echo ""
-      echo "Docker & Docker Compose增强:"
-      echo "  - 统一的版本选择逻辑 (默认版本/环境变量/交互选择/latest)"
-      echo "  - 智能缓存机制，避免重复下载"
-      echo "  - 支持多架构: x86_64, aarch64, armv7, armv6, ppc64le, s390x, riscv64"
-      echo "  - 完整的错误处理和版本验证"
-      echo "  - GitHub代理支持加速下载（仅中国大陆）"
-      echo ""
       echo "使用示例:"
       echo "  $0                                          # 自动检测地区并配置"
       echo "  IN_CHINA=true $0                           # 强制启用中国大陆配置"
       echo "  IN_CHINA=false $0                          # 强制使用国际配置"
-      echo "  IN_CHINA=true DOCKER_VERSION=27.3.1 $0    # 中国配置+指定Docker版本"
+      echo "  IN_CHINA=true DOCKER_VERSION=27.3.1 $0    # 中国配置+指定Docker版本(仅二进制方式)"
       echo "  REGISTRY_MIRROR=NONE $0                    # 禁用Docker镜像加速"
       echo "  GITHUB_PROXY='' IN_CHINA=true $0           # 中国配置但禁用GitHub代理"
       exit 0 ;;
   esac
 
   echo ""
-  log_success "=== Debian/Ubuntu 开发环境配置脚本 (地区适配版) ==="
+  log_success "=== Debian/Ubuntu 开发环境配置脚本 (增强版) ==="
   echo ""
   
   # 首先检测地区
@@ -1956,8 +2431,8 @@ main() {
   log_info "地区配置: ${IN_CHINA}"
   log_info "GitHub代理: $(get_github_proxy || echo "(无)")"
   log_info "Docker镜像源: $(get_docker_registry_mirrors)"
-  log_info "Docker版本: ${DOCKER_VERSION}"
-  log_info "Docker Compose版本: ${DOCKER_COMPOSE_VERSION}"
+  log_info "Docker版本: ${DOCKER_VERSION} (二进制方式使用)"
+  log_info "Docker Compose版本: ${DOCKER_COMPOSE_VERSION} (二进制方式使用)"
 
   init_user_info
   check_system
