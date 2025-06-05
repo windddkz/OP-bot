@@ -1143,9 +1143,11 @@ configure_vim() {
     log_info "Catppuccin 主题目录已存在，跳过下载。"
   fi
 
+  # 配置 my_configs.vim 以使用 Catppuccin 主题
   log_info "配置个人 Vim 设置 (${my_configs_path})..."
-  local catppuccin_config_content 
-  read -r -d '' catppuccin_config_content << 'EOF' || true
+
+  local catppuccin_config
+  read -r -d '' catppuccin_config << 'EOF' || true
 " ===== 个人 Vim 配置 (由开发环境脚本生成) =====
 
 " 启用真彩色支持
@@ -1155,56 +1157,67 @@ endif
 
 " 应用 Catppuccin 主题
 try
-  colorscheme catppuccin_latte " 默认使用 Latte (浅色)
+  colorscheme catppuccin_latte
 catch
+  " 如果 Catppuccin 主题不可用，回退到 amix/vimrc 默认主题
   try
-    colorscheme shine " amix/vimrc 默认
+    colorscheme shine
   catch
-    colorscheme default " Vim 内建默认
+    colorscheme default
   endtry
 endtry
 
 " 额外的个人偏好设置
 set number                    " 显示行号
-set relativenumber           
-set cursorline               
-set mouse=a                  
-set clipboard=unnamedplus    
+set relativenumber           " 显示相对行号
+set cursorline               " 高亮当前行
+set mouse=a                  " 启用鼠标支持
+set clipboard=unnamedplus    " 使用系统剪贴板
 
 " 搜索设置
-set ignorecase               
-set smartcase                
+set ignorecase               " 搜索时忽略大小写
+set smartcase                " 有大写字母时精确匹配
 
 " 缩进设置
-set expandtab                
-set tabstop=4                
-set shiftwidth=4             
-set softtabstop=4            
+set expandtab                " 将 tab 转换为空格
+set tabstop=4                " tab 宽度
+set shiftwidth=4             " 缩进宽度
+set softtabstop=4            " 软 tab 宽度
 
 " 文件类型特定缩进
 autocmd FileType javascript,typescript,json,html,css,scss,yaml,yml setlocal tabstop=2 shiftwidth=2 softtabstop=2
 autocmd FileType python setlocal tabstop=4 shiftwidth=4 softtabstop=4
-autocmd FileType go setlocal tabstop=4 shiftwidth=4 softtabstop=4 noexpandtab 
+autocmd FileType go setlocal tabstop=4 shiftwidth=4 softtabstop=4 noexpandtab
+
+" 快捷键映射
+nnoremap <leader>ev :vsplit ~/.vim_runtime/my_configs.vim<CR>
+nnoremap <leader>sv :source ~/.vim_runtime/my_configs.vim<CR>
 
 " ===== 个人配置结束 =====
 EOF
 
-  if [[ ! -f "${my_configs_path}" ]]; then
-    run_as_user "touch '${my_configs_path}'" 
-  fi
-
-  if ! run_as_user "grep -Fq '个人 Vim 配置 (由开发环境脚本生成)' '${my_configs_path}'"; then
-    run_as_user "echo \"${catppuccin_config_content}\" >> '${my_configs_path}'"
+  # 检查是否已有配置，避免重复添加
+  if [[ ! -f "${my_configs_path}" ]] || ! run_as_user "grep -q '个人 Vim 配置.*开发环境脚本' '${my_configs_path}'"; then
+    run_as_user "echo '${catppuccin_config}' >> '${my_configs_path}'"
     log_info "个人 Vim 配置已添加到 ${my_configs_path}。"
   else
-    log_info "检测到个人配置标记已存在于 ${my_configs_path}，跳过重复添加。"
+    log_info "检测到个人配置已存在，跳过添加。"
   fi
 
   log_success "Vim 配置完成！"
-  log_info "  amix/vimrc 使用 <Leader>ve 编辑个人配置, <Leader>vs 重载配置。"
+  log_info "配置详情："
+  log_info "  • 基础配置: amix/vimrc awesome 版本"
+  log_info "  • 主题: Catppuccin Latte (浅色主题)"
+  log_info "  • 个人配置文件: ${my_configs_path}"
+  log_info "  • 编辑个人配置: <leader>ev (在 Vim 中)"
+  log_info "  • 重载个人配置: <leader>sv (在 Vim 中)"
+  log_info "使用说明："
+  log_info "  • amix/vimrc 包含大量有用的插件和配置"
+  log_info "  • 如需更换主题风味，编辑 ${my_configs_path} 中的 colorscheme 行"
+  log_info "  • 可选风味: catppuccin_latte(浅色), catppuccin_frappe(暖色), catppuccin_macchiato(深色), catppuccin_mocha(最深色)"
+
   mark_completed "vim_config"
 }
-
 
 # --- 步骤 8：安装与配置 tmux ---
 install_tmux() {
