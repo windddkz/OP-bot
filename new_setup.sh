@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Debian/Ubuntu 一键开发环境配置脚本
+# Debian/Ubuntu 一键开发环境配置脚本 (优化版)
 # 支持root用户运行、自动配置sudo、修复PATH、SSH配置、脚本内GitHub链接代理等
 # 融合了优化的Docker安装和系统检查功能
 
@@ -9,6 +9,7 @@ trap 'echo -e "\033[0;31m[ERROR]\033[0m 第${LINENO}行命令执行失败：${BA
 # 色彩输出
 RED='\033[0;31m'; GREEN='\033[32;1m'
 YELLOW='\033[33;1m'; BLUE='\033[0;34m'
+CYAN='\033[0;36m'; PURPLE='\033[0;35m'
 NC='\033[0m'
 
 # 全局变量
@@ -16,11 +17,14 @@ IS_ROOT=false
 TARGET_USER=""
 TARGET_HOME=""
 SUDO_CMD=""
+INSTALL_EXTRA_TOOLS=false
 
 log_info()    { echo -e "${BLUE}[INFO]${NC}    $*"; }
 log_success() { echo -e "${GREEN}[SUCCESS]${NC} $*"; }
 log_warning() { echo -e "${YELLOW}[WARNING]${NC} $*"; }
 log_error()   { echo -e "${RED}[ERROR]${NC}   $*"; }
+log_step()    { echo -e "${PURPLE}[STEP]${NC}    $*"; }
+log_prompt()  { echo -e "${CYAN}[PROMPT]${NC}  $*"; }
 
 # GitHub 代理前缀
 GITHUB_PROXY="${GITHUB_PROXY:-https://ghfast.top}"
@@ -150,6 +154,30 @@ init_user_info() {
   fi
 }
 
+# 用户选择配置项
+configure_installation_options() {
+  log_step "配置安装选项"
+  
+  echo ""
+  log_prompt "额外开发工具包括："
+  echo "  • Node.js (LTS)"
+  echo "  • Python3-pip, JDK, Go, Ruby, PHP"
+  echo "  • 数据库客户端 (MySQL, PostgreSQL, Redis, SQLite)"
+  echo "  • 开发工具 (jq, yq)"
+  echo "  • Visual Studio Code"
+  echo ""
+  
+  read -rp "是否安装额外开发工具？ (y/N): " install_extra
+  if [[ "${install_extra,,}" == "y" ]]; then
+    INSTALL_EXTRA_TOOLS=true
+    log_success "已选择安装额外开发工具"
+  else
+    log_info "跳过额外开发工具安装"
+  fi
+  
+  echo ""
+}
+
 # 状态文件
 get_status_file() {
   echo "${TARGET_HOME}/.dev-env-setup-status"
@@ -162,7 +190,7 @@ skip_if_completed(){ is_completed "$1" && log_warning "$1 已完成，跳过。"
 # 修复PATH环境变量
 fix_path() {
   skip_if_completed "fix_path" && return
-  log_info "检查并修复PATH环境变量..."
+  log_step "检查并修复PATH环境变量"
 
   local common_paths=(
     "/usr/local/sbin"
@@ -205,10 +233,9 @@ fix_path() {
 # 检查并安装sudo
 setup_sudo() {
   skip_if_completed "setup_sudo" && return
+  log_step "配置sudo和用户权限"
 
   if [[ "${IS_ROOT}" == "true" ]]; then
-    log_info "配置sudo和用户权限..."
-
     if ! command -v sudo &>/dev/null; then
       log_info "安装sudo..."
       apt update
@@ -333,6 +360,7 @@ check_iptables() {
 # ---- 步骤 1：配置 SSH ----
 setup_ssh() {
   skip_if_completed "setup_ssh" && return
+  log_step "配置SSH服务"
 
   log_info "配置 SSH：允许 root 登录，并启用密码认证…"
 
@@ -357,6 +385,7 @@ setup_ssh() {
 # ---- 步骤 2：生成SSH密钥对并配置免密登录 ----
 setup_ssh_keys() {
   skip_if_completed "setup_ssh_keys" && return
+  log_step "配置SSH密钥对"
 
   log_info "生成SSH密钥对并配置免密登录..."
 
@@ -421,6 +450,8 @@ setup_ssh_keys() {
 # ---- 步骤 3：切换到阿里云源 ----
 setup_aliyun_mirror() {
   skip_if_completed "aliyun_mirror" && return
+  log_step "配置阿里云镜像源"
+  
   log_info "备份并配置阿里云镜像源…"
   ${SUDO_CMD} cp -n /etc/apt/sources.list /etc/apt/sources.list.backup
 
@@ -460,6 +491,8 @@ EOF
 # ---- 步骤 4：更新系统 ----
 update_system() {
   skip_if_completed "system_update" && return
+  log_step "更新系统"
+  
   log_info "更新 apt 包列表并升级…"
   ${SUDO_CMD} apt update && ${SUDO_CMD} apt upgrade -y
   log_success "系统更新完成。"
@@ -469,6 +502,8 @@ update_system() {
 # ---- 步骤 5：安装基础工具 ----
 install_basic_tools() {
   skip_if_completed "basic_tools" && return
+  log_step "安装基础工具"
+  
   log_info "安装基础工具 (curl, wget, git, vim, jq, …) …"
   ${SUDO_CMD} apt install -y \
     curl wget git vim build-essential software-properties-common \
@@ -481,6 +516,8 @@ install_basic_tools() {
 # ---- 步骤 6：安装并配置 Zsh & Oh My Zsh & Powerlevel10k ----
 install_zsh() {
   skip_if_completed "zsh" && return
+  log_step "安装Zsh"
+  
   log_info "安装 zsh…"
   ${SUDO_CMD} apt install -y zsh
 
@@ -499,6 +536,8 @@ install_zsh() {
 
 install_oh_my_zsh() {
   skip_if_completed "oh_my_zsh" && return
+  log_step "安装Oh My Zsh"
+  
   log_info "安装 Oh My Zsh…"
   if [[ ! -d "${TARGET_HOME}/.oh-my-zsh" ]]; then
     local url install_script
@@ -519,6 +558,8 @@ install_oh_my_zsh() {
 
 install_powerlevel10k() {
   skip_if_completed "powerlevel10k" && return
+  log_step "安装Powerlevel10k主题"
+  
   log_info "安装 Powerlevel10k…"
   local dest="${TARGET_HOME}/.oh-my-zsh/custom/themes/powerlevel10k"
   if [[ ! -d "${dest}" ]]; then
@@ -553,30 +594,147 @@ install_powerlevel10k() {
   mark_completed "powerlevel10k"
 }
 
-# ---- 步骤 7：配置 Vim ----
+# ---- 步骤 7：配置 Vim (使用 Catppuccin 浅色主题) ----
 configure_vim() {
   skip_if_completed "vim" && return
-  log_info "配置 Vim (amix/vimrc)…"
-  local vimdir="${TARGET_HOME}/.vim_runtime"
-  if [[ ! -d "${vimdir}" ]]; then
-    run_as_user "git clone --depth=1 '$(add_github_proxy 'https://github.com/amix/vimrc.git')' '${vimdir}'"
-
-    local vim_install_script="${vimdir}/install_awesome_vimrc.sh"
-    if run_as_user "[ -f '${vim_install_script}' ]"; then
-      process_script_github_urls "${vim_install_script}"
-    fi
-
-    run_as_user "sh '${vim_install_script}'"
-    log_success "Vim 配置完成。"
+  log_step "配置Vim (Catppuccin浅色主题)"
+  
+  log_info "配置 Vim 使用 Catppuccin 浅色主题…"
+  
+  # 创建vim配置目录
+  local vim_dir="${TARGET_HOME}/.vim"
+  local colors_dir="${vim_dir}/colors"
+  
+  create_user_dir "${vim_dir}"
+  create_user_dir "${colors_dir}"
+  
+  # 克隆 Catppuccin vim 主题
+  local catppuccin_tmp_dir="$(mktemp -d)"
+  log_info "下载 Catppuccin vim 主题..."
+  run_as_user "git clone --depth=1 '$(add_github_proxy 'https://github.com/catppuccin/vim.git')' '${catppuccin_tmp_dir}'"
+  
+  # 复制颜色文件
+  if [[ "${IS_ROOT}" == "true" ]]; then
+    cp -r "${catppuccin_tmp_dir}/colors/"* "${colors_dir}/"
+    chown -R "${TARGET_USER}:${TARGET_USER}" "${colors_dir}"
   else
-    log_warning "Vim 已配置，跳过。"
+    run_as_user "cp -r '${catppuccin_tmp_dir}/colors/'* '${colors_dir}/'"
   fi
+  
+  rm -rf "${catppuccin_tmp_dir}"
+  
+  # 创建 .vimrc 配置文件
+  local vimrc_content='
+" 启用真彩色支持
+set termguicolors
+
+" 基本设置
+set number
+set relativenumber
+set expandtab
+set tabstop=4
+set shiftwidth=4
+set smartindent
+set autoindent
+set hlsearch
+set incsearch
+set ignorecase
+set smartcase
+set wildmenu
+set ruler
+set showcmd
+set laststatus=2
+set backspace=indent,eol,start
+set encoding=utf-8
+set fileencodings=utf-8,gb2312,gb18030,gbk,ucs-bom,cp936,latin1
+
+" 启用语法高亮
+syntax enable
+
+" 设置 Catppuccin 浅色主题
+colorscheme catppuccin_latte
+
+" 启用文件类型检测
+filetype on
+filetype plugin on
+filetype indent on
+
+" 鼠标支持
+set mouse=a
+
+" 搜索高亮
+set hlsearch
+" 按 ESC 清除搜索高亮
+nnoremap <ESC> :nohlsearch<CR>
+
+" 显示匹配的括号
+set showmatch
+
+" 自动补全
+set wildmode=longest,list,full
+
+" 历史记录
+set history=1000
+
+" 状态栏显示
+set statusline=%F%m%r%h%w\ [FORMAT=%{&ff}]\ [TYPE=%Y]\ [POS=%l,%v][%p%%]\ %{strftime(\"%d/%m/%y\ -\ %H:%M\")}
+
+" 快捷键映射
+" 保存文件
+nnoremap <C-s> :w<CR>
+inoremap <C-s> <Esc>:w<CR>a
+
+" 退出
+nnoremap <C-q> :q<CR>
+
+" 复制到系统剪贴板
+vnoremap <C-c> "+y
+
+" 从系统剪贴板粘贴
+nnoremap <C-v> "+p
+inoremap <C-v> <Esc>"+pa
+
+" 窗口切换
+nnoremap <C-h> <C-w>h
+nnoremap <C-j> <C-w>j
+nnoremap <C-k> <C-w>k
+nnoremap <C-l> <C-w>l
+
+" 标签页操作
+nnoremap <C-t> :tabnew<CR>
+nnoremap <C-w> :tabclose<CR>
+nnoremap <C-PageUp> :tabprev<CR>
+nnoremap <C-PageDown> :tabnext<CR>
+
+" 文件树 (如果安装了 netrw)
+nnoremap <F2> :Explore<CR>
+
+" 缩进操作
+vnoremap < <gv
+vnoremap > >gv
+
+" 行移动
+nnoremap <A-j> :m .+1<CR>==
+nnoremap <A-k> :m .-2<CR>==
+inoremap <A-j> <Esc>:m .+1<CR>==gi
+inoremap <A-k> <Esc>:m .-2<CR>==gi
+vnoremap <A-j> :m '\''>+1<CR>gv=gv
+vnoremap <A-k> :m '\''<-2<CR>gv=gv
+'
+
+  write_user_file "${TARGET_HOME}/.vimrc" "${vimrc_content}"
+  
+  log_success "Vim 配置完成 (Catppuccin 浅色主题)。"
+  log_info "主题: catppuccin_latte (浅色)"
+  log_info "配置文件: ${TARGET_HOME}/.vimrc"
   mark_completed "vim"
 }
 
 # ---- 步骤 8：安装并配置 tmux ----
 install_tmux() {
   skip_if_completed "tmux" && return
+  log_step "安装tmux"
+  
   log_info "安装 tmux…"
   ${SUDO_CMD} apt install -y tmux
   log_success "tmux 安装完成。"
@@ -585,6 +743,8 @@ install_tmux() {
 
 configure_tmux() {
   skip_if_completed "tmux_conf" && return
+  log_step "配置tmux"
+  
   log_info "配置 tmux…"
   local tmux_plugins_dir="${TARGET_HOME}/.tmux/plugins"
   create_user_dir "${tmux_plugins_dir}"
@@ -615,18 +775,21 @@ bind l select-pane -R
 set -g @plugin '\''tmux-plugins/tpm'\''
 set -g @plugin '\''tmux-plugins/tmux-sensible'\''
 set -g @plugin '\''catppuccin/tmux'\''
-set -g @catppuccin_flavour '\''macchiato'\''
+set -g @catppuccin_flavour '\''latte'\''
 
 # Initialize TMUX plugin manager (keep this line at the very bottom of tmux.conf)
 run '\''~/.tmux/plugins/tpm/tpm'\'''
 
   log_success "tmux 配置完成，请在 tmux 下按 前缀 + I (例如 Ctrl+b I) 安装插件。"
+  log_info "tmux主题: Catppuccin Latte (浅色)"
   mark_completed "tmux_conf"
 }
 
 # ---- 步骤 9：安装 Miniconda ----
 install_miniconda() {
   skip_if_completed "miniconda" && return
+  log_step "安装Miniconda"
+  
   log_info "安装 Miniconda…"
 
   if run_as_user "command -v conda" &>/dev/null; then
@@ -674,6 +837,8 @@ install_miniconda() {
 # ---- 步骤 10：安装 Docker (融合优化版本) ----
 install_docker() {
   skip_if_completed "docker" && return
+  log_step "安装Docker"
+  
   log_info "安装 Docker…"
 
   # 检查Docker是否已安装并运行
@@ -1125,6 +1290,8 @@ EOF
 # ---- 步骤 11：安装 Docker Compose (优化版本，与Docker逻辑一致) ----
 install_docker_compose() {
   skip_if_completed "docker_compose" && return
+  log_step "安装Docker Compose"
+  
   log_info "安装 Docker Compose…"
 
   # 检查是否已安装
@@ -1326,9 +1493,16 @@ install_docker_compose() {
   mark_completed "docker_compose"
 }
 
-# ---- 步骤 12：安装额外开发工具 ----
+# ---- 步骤 12：安装额外开发工具 (可选) ----
 install_extra_tools() {
+  if [[ "${INSTALL_EXTRA_TOOLS}" != "true" ]]; then
+    log_info "跳过额外开发工具安装"
+    return
+  fi
+
   skip_if_completed "extra_tools" && return
+  log_step "安装额外开发工具"
+  
   log_info "安装额外开发工具…"
 
   # 安装 Node.js
@@ -1347,6 +1521,9 @@ install_extra_tools() {
 
     rm -f "${node_script}"
     ${SUDO_CMD} apt install -y nodejs
+    log_success "Node.js安装完成"
+  else
+    log_info "Node.js已安装，跳过"
   fi
 
   # 安装基础开发工具
@@ -1382,6 +1559,8 @@ install_extra_tools() {
     rm -f packages.microsoft.gpg
     ${SUDO_CMD} apt update
     ${SUDO_CMD} apt install -y code || log_warning "VSCode (apt) 安装失败. 可以尝试手动安装 code-oss."
+  else
+    log_info "VSCode已安装，跳过"
   fi
 
   log_success "额外工具安装完成。"
@@ -1391,6 +1570,8 @@ install_extra_tools() {
 # ---- 步骤 13：配置 Git ----
 configure_git() {
   skip_if_completed "git" && return
+  log_step "配置Git"
+  
   log_info "配置 Git…"
 
   local current_name current_email git_name git_email
@@ -1416,6 +1597,8 @@ configure_git() {
 # ---- 步骤 14：最终设置 ----
 final_setup() {
   skip_if_completed "final_setup" && return
+  log_step "最终设置"
+  
   log_info "做最后的目录和别名设置…"
   create_user_dir "${TARGET_HOME}/Projects"
   create_user_dir "${TARGET_HOME}/Scripts"
@@ -1465,6 +1648,10 @@ alias gignore='echo .DS_Store >> .gitignore && echo Thumbs.db >> .gitignore && e
 
 # System update alias
 alias update='sudo apt update && sudo apt upgrade -y && sudo apt autoremove -y'
+
+# Vim相关别名
+alias vi='vim'
+alias vimdiff='vim -d'
 EOF
 )
     run_as_user "echo \"${aliases_content}\" >> '${zshrc_file}'"
@@ -1485,8 +1672,8 @@ Docker镜像源: ${REGISTRY_MIRROR}
   • SSH密钥对 (已配置免密登录到localhost)
   • iptables (Docker依赖)
   • zsh + Oh My Zsh + Powerlevel10k
-  • vim (amix/vimrc)
-  • tmux (Catppuccin 主题, 前缀+I 安装插件)
+  • vim (Catppuccin 浅色主题 - catppuccin_latte)
+  • tmux (Catppuccin Latte 浅色主题, 前缀+I 安装插件)
   • Miniconda (conda init zsh/bash 已执行)
   • Docker & Docker Compose (优化版本，一致的安装逻辑)
     - Docker: 支持本地缓存和/opt/docker/down缓存
@@ -1496,38 +1683,61 @@ Docker镜像源: ${REGISTRY_MIRROR}
     - 优化的systemd服务配置
     - iptables前向规则自动配置
     - 支持多架构: x86_64, aarch64, armv7, armv6, ppc64le, s390x, riscv64
-  • Node.js (LTS), Python3-pip, JDK, Go, Ruby, PHP, DB clients
+$(if [[ "${INSTALL_EXTRA_TOOLS}" == "true" ]]; then
+  echo "  • Node.js (LTS), Python3-pip, JDK, Go, Ruby, PHP, DB clients"
+  echo "  • Visual Studio Code"
+else
+  echo "  • 额外开发工具: 已跳过安装"
+fi)
   • Git (基本配置)
   • 常用目录和 zsh 别名
+
+Vim配置亮点：
+  • 主题: Catppuccin Latte (浅色配色方案)
+  • 启用真彩色支持 (termguicolors)
+  • 丰富的快捷键配置
+  • 智能缩进和语法高亮
+  • 配置文件: ${TARGET_HOME}/.vimrc
+
+tmux配置亮点：
+  • 主题: Catppuccin Latte (浅色)
+  • 鼠标支持和历史记录优化
+  • 自定义快捷键绑定
 
 重要提示：
   1. 用户 ${TARGET_USER} 需要重新登录以使以下更改完全生效：
      - zsh 作为默认 shell
      - Docker 用户组权限
      - 新的 PATH 环境变量
-  2. Docker & Docker Compose配置：
+  2. Vim & tmux 主题统一：
+     - 都使用 Catppuccin Latte 浅色主题
+     - 在终端中使用体验一致
+  3. Docker & Docker Compose配置：
      - 版本检查：已安装的Docker版本不能低于1.13.x
      - 默认版本：Docker ${DOCKER_VERSION}, Docker Compose ${DOCKER_COMPOSE_VERSION}
      - 缓存机制：安装包会缓存在 /tmp/ 目录
      - 版本选择：支持环境变量或交互式输入
      - 镜像加速：支持16个国内镜像源（CN模式）
-  3. 环境变量支持：
+  4. 环境变量支持：
      - DOCKER_VERSION: 指定Docker版本 (默认: 28.2.2)
      - DOCKER_COMPOSE_VERSION: 指定Docker Compose版本 (默认: v2.36.2)
      - GITHUB_PROXY: GitHub代理地址 (默认: https://ghfast.top)
      - REGISTRY_MIRROR: Docker镜像源 (默认: CN)
-  4. 验证安装：
+  5. 验证安装：
      - 'docker --version' 和 'docker info'
      - 'docker-compose --version' 或 'docker compose version'
+     - 'vim --version' 查看Vim配置
      - 其他工具版本检查
-  5. SSH密钥已配置，可测试 'ssh ${TARGET_USER}@127.0.0.1'
-  6. 状态管理：删除 $(get_status_file) 可重置安装状态
+  6. SSH密钥已配置，可测试 'ssh ${TARGET_USER}@127.0.0.1'
+  7. 状态管理：删除 $(get_status_file) 可重置安装状态
 
 缓存位置：
   - Docker: /tmp/docker-${DOCKER_VERSION}.tgz, /opt/docker/down/docker-${DOCKER_VERSION}.tgz
   - Docker Compose: /tmp/docker-compose-${DOCKER_COMPOSE_VERSION}-linux-\${arch}
 
 配置文件：
+  - Vim: ${TARGET_HOME}/.vimrc (Catppuccin Latte 主题)
+  - tmux: ${TARGET_HOME}/.tmux.conf (Catppuccin Latte 主题)
   - Docker: /etc/docker/daemon.json
   - Docker Compose: 独立二进制文件安装
 EOF
@@ -1565,6 +1775,13 @@ main() {
       echo "  DOCKER_COMPOSE_VERSION Docker Compose版本号 (默认: v2.36.2)"
       echo "  REGISTRY_MIRROR        Docker镜像源 (默认: CN, 可设为其他值禁用镜像加速)"
       echo ""
+      echo "新增特性 (优化版):"
+      echo "  ✓ 额外工具可选安装 - 脚本运行时可选择是否安装开发工具"
+      echo "  ✓ Vim Catppuccin浅色主题 - 使用catppuccin_latte浅色配色"
+      echo "  ✓ tmux Catppuccin浅色主题 - 与vim主题保持一致"
+      echo "  ✓ 增强的用户交互 - 彩色日志输出和步骤提示"
+      echo "  ✓ 优化的错误处理和状态管理"
+      echo ""
       echo "Docker & Docker Compose增强:"
       echo "  - 统一的版本选择逻辑 (默认版本/环境变量/交互选择/latest)"
       echo "  - 智能缓存机制，避免重复下载"
@@ -1578,6 +1795,9 @@ main() {
       exit 0 ;;
   esac
 
+  echo ""
+  log_success "=== Debian/Ubuntu 开发环境配置脚本 (优化版) ==="
+  echo ""
   log_info "开始配置开发环境..."
   log_info "GitHub代理: ${GITHUB_PROXY:-(无)}"
   log_info "Docker镜像源: ${REGISTRY_MIRROR}"
@@ -1593,8 +1813,16 @@ main() {
     echo
   fi
 
+  echo ""
   read -rp "是否继续为用户 ${TARGET_USER} (HOME: ${TARGET_HOME}) 配置开发环境？(y/N): " yn
   [[ "${yn,,}" == "y" ]] || { log_info "操作已取消。"; exit 0; }
+
+  # 配置安装选项
+  configure_installation_options
+
+  echo ""
+  log_success "开始执行配置步骤..."
+  echo ""
 
   fix_path
   setup_sudo
@@ -1615,6 +1843,8 @@ main() {
   install_extra_tools
   configure_git
   final_setup
+  
+  echo ""
   show_summary
 }
 
