@@ -2,6 +2,7 @@
 # Debian/Ubuntu 一键开发环境配置脚本 (优化版)
 # 支持root用户运行、自动配置sudo、修复PATH、SSH配置、脚本内GitHub链接代理等
 # 融合了优化的Docker安装和系统检查功能
+# 新增：支持根据地区配置镜像源和代理
 
 set -euo pipefail
 trap 'echo -e "\033[0;31m[ERROR]\033[0m 第${LINENO}行命令执行失败：${BASH_COMMAND}"; exit 1' ERR
@@ -19,6 +20,9 @@ TARGET_HOME=""
 SUDO_CMD=""
 INSTALL_EXTRA_TOOLS=false
 
+# 中国大陆地区配置控制
+IN_CHINA="${IN_CHINA:-auto}"
+
 log_info()    { echo -e "${BLUE}[INFO]${NC}    $*"; }
 log_success() { echo -e "${GREEN}[SUCCESS]${NC} $*"; }
 log_warning() { echo -e "${YELLOW}[WARNING]${NC} $*"; }
@@ -26,19 +30,74 @@ log_error()   { echo -e "${RED}[ERROR]${NC}   $*"; }
 log_step()    { echo -e "${PURPLE}[STEP]${NC}    $*"; }
 log_prompt()  { echo -e "${CYAN}[PROMPT]${NC}  $*"; }
 
-# GitHub 代理前缀
-GITHUB_PROXY="${GITHUB_PROXY:-https://ghfast.top}"
+# 检测是否在中国大陆
+detect_china_region() {
+  if [[ "${IN_CHINA}" == "auto" ]]; then
+    log_info "自动检测地区..."
+    
+    # 方法1: 检查时区
+    local timezone=""
+    if [[ -f /etc/timezone ]]; then
+      timezone=$(cat /etc/timezone 2>/dev/null || echo "")
+    elif command -v timedatectl &>/dev/null; then
+      timezone=$(timedatectl show --property=Timezone --value 2>/dev/null || echo "")
+    fi
+    
+    if [[ "${timezone}" =~ ^Asia/(Shanghai|Chongqing|Harbin|Urumqi)$ ]]; then
+      IN_CHINA="true"
+      log_info "检测到中国时区: ${timezone}"
+      return
+    fi
+    
+    # 方法2: 检查语言环境
+    if [[ "${LANG:-}" =~ ^zh_CN ]]; then
+      IN_CHINA="true"
+      log_info "检测到中文语言环境: ${LANG}"
+      return
+    fi
+    
+    # 方法3: 尝试网络检测（简单方法，可能不准确）
+    if command -v curl &>/dev/null; then
+      local ip_info=""
+      # 使用可靠的IP地理位置服务，设置短超时
+      if ip_info=$(curl -s --connect-timeout 3 --max-time 5 "http://ipinfo.io/country" 2>/dev/null); then
+        if [[ "${ip_info}" == "CN" ]]; then
+          IN_CHINA="true"
+          log_info "检测到中国IP地址"
+          return
+        fi
+      fi
+    fi
+    
+    # 默认不在中国
+    IN_CHINA="false"
+    log_info "未检测到中国大陆环境，使用国际配置"
+  else
+    log_info "使用手动指定的地区配置: ${IN_CHINA}"
+  fi
+}
+
+# GitHub 代理前缀（仅在中国时启用）
+get_github_proxy() {
+  if [[ "${IN_CHINA}" == "true" ]]; then
+    echo "${GITHUB_PROXY:-https://ghfast.top}"
+  else
+    echo ""
+  fi
+}
 
 # Docker相关配置
-REGISTRY_MIRROR="${REGISTRY_MIRROR:-CN}"
+REGISTRY_MIRROR="${REGISTRY_MIRROR:-auto}"
 DOCKER_VERSION="${DOCKER_VERSION:-28.2.2}"
 DOCKER_COMPOSE_VERSION="${DOCKER_COMPOSE_VERSION:-v2.36.2}"
 
 # 支持更多 GitHub 相关域名
 add_github_proxy() {
   local url="$1"
-  if [[ -n "${GITHUB_PROXY}" && "${url}" =~ ^https://(github\.com|raw\.githubusercontent\.com|api\.github\.com|codeload\.github\.com|objects\.githubusercontent\.com|ghcr\.io|gist\.github\.com) ]]; then
-    echo "${GITHUB_PROXY}/${url}"
+  local proxy_prefix=$(get_github_proxy)
+  
+  if [[ -n "${proxy_prefix}" && "${url}" =~ ^https://(github\.com|raw\.githubusercontent\.com|api\.github\.com|codeload\.github\.com|objects\.githubusercontent\.com|ghcr\.io|gist\.github\.com) ]]; then
+    echo "${proxy_prefix}/${url}"
   else
     echo "${url}"
   fi
@@ -54,6 +113,7 @@ is_github_url() {
 process_script_github_urls() {
   local script_file="$1"
   local backup_file="${script_file}.backup"
+  local proxy_prefix=$(get_github_proxy)
 
   if [[ ! -f "${script_file}" ]]; then
     log_warning "脚本文件不存在: ${script_file}"
@@ -61,7 +121,8 @@ process_script_github_urls() {
   fi
 
   # 如果没有设置代理，直接返回
-  if [[ -z "${GITHUB_PROXY}" ]]; then
+  if [[ -z "${proxy_prefix}" ]]; then
+    log_info "未启用GitHub代理，跳过脚本链接处理"
     return 0
   fi
 
@@ -73,21 +134,21 @@ process_script_github_urls() {
   # 使用sed替换GitHub相关域名
   sed -i "
     # 处理 https://github.com
-    s|https://github\.com|${GITHUB_PROXY}/https://github.com|g
+    s|https://github\.com|${proxy_prefix}/https://github.com|g
     # 处理 https://raw.githubusercontent.com
-    s|https://raw\.githubusercontent\.com|${GITHUB_PROXY}/https://raw.githubusercontent.com|g
+    s|https://raw\.githubusercontent\.com|${proxy_prefix}/https://raw.githubusercontent.com|g
     # 处理 https://api.github.com
-    s|https://api\.github\.com|${GITHUB_PROXY}/https://api.github.com|g
+    s|https://api\.github\.com|${proxy_prefix}/https://api.github.com|g
     # 处理 https://codeload.github.com
-    s|https://codeload\.github\.com|${GITHUB_PROXY}/https://codeload.github.com|g
+    s|https://codeload\.github\.com|${proxy_prefix}/https://codeload.github.com|g
     # 处理 https://objects.githubusercontent.com
-    s|https://objects\.githubusercontent\.com|${GITHUB_PROXY}/https://objects.githubusercontent.com|g
+    s|https://objects\.githubusercontent\.com|${proxy_prefix}/https://objects.githubusercontent.com|g
     # 处理 https://ghcr.io
-    s|https://ghcr\.io|${GITHUB_PROXY}/https://ghcr.io|g
+    s|https://ghcr\.io|${proxy_prefix}/https://ghcr.io|g
     # 处理 https://gist.github.com
-    s|https://gist\.github\.com|${GITHUB_PROXY}/https://gist.github.com|g
+    s|https://gist\.github\.com|${proxy_prefix}/https://gist.github.com|g
     # 移除重复的代理前缀（防止多次处理导致的重复）
-    s|${GITHUB_PROXY}/${GITHUB_PROXY}/|${GITHUB_PROXY}/|g
+    s|${proxy_prefix}/${proxy_prefix}/|${proxy_prefix}/|g
   " "${script_file}"
 
   log_success "脚本GitHub链接处理完成: $(basename "${script_file}")"
@@ -447,9 +508,16 @@ setup_ssh_keys() {
   mark_completed "setup_ssh_keys"
 }
 
-# ---- 步骤 3：切换到阿里云源 ----
+# ---- 步骤 3：切换到阿里云源 (仅在中国时执行) ----
 setup_aliyun_mirror() {
   skip_if_completed "aliyun_mirror" && return
+  
+  if [[ "${IN_CHINA}" != "true" ]]; then
+    log_info "非中国大陆地区，跳过阿里云镜像源配置"
+    mark_completed "aliyun_mirror"
+    return
+  fi
+  
   log_step "配置阿里云镜像源"
   
   log_info "备份并配置阿里云镜像源…"
@@ -834,6 +902,19 @@ install_miniconda() {
   mark_completed "miniconda"
 }
 
+# 获取Docker镜像源配置
+get_docker_registry_mirrors() {
+  if [[ "${REGISTRY_MIRROR}" == "auto" ]]; then
+    if [[ "${IN_CHINA}" == "true" ]]; then
+      echo "CN"
+    else
+      echo "NONE"
+    fi
+  else
+    echo "${REGISTRY_MIRROR}"
+  fi
+}
+
 # ---- 步骤 10：安装 Docker (融合优化版本) ----
 install_docker() {
   skip_if_completed "docker" && return
@@ -1102,12 +1183,14 @@ EOF
     log_success "containerd服务配置完成"
   fi
 
-  # 配置Docker daemon.json（融合更多镜像源）
+  # 配置Docker daemon.json（根据地区配置镜像源）
   log_info "配置Docker daemon.json..."
   ${SUDO_CMD} mkdir -p /etc/docker
 
   local registry_mirrors
-  if [[ "${REGISTRY_MIRROR}" == "CN" ]]; then
+  local effective_mirror_setting=$(get_docker_registry_mirrors)
+  
+  if [[ "${effective_mirror_setting}" == "CN" ]]; then
     registry_mirrors='"https://docker.m.daocloud.io",
         "https://docker.1ms.run",
         "https://ccr.ccs.tencentyun.com",
@@ -1124,8 +1207,10 @@ EOF
         "https://freeno.xyz",
         "https://docker.kejilion.pro",
         "https://docker.rainbond.cc"'
+    log_info "配置中国镜像加速器"
   else
-    registry_mirrors='""'
+    registry_mirrors=''
+    log_info "使用官方Docker Hub"
   fi
 
   ${SUDO_CMD} tee /etc/docker/daemon.json >/dev/null <<EOF
@@ -1138,10 +1223,10 @@ EOF
         "max-size": "10m"
     },
     "max-concurrent-downloads": 10,
-    "max-concurrent-uploads": 10,
-    "registry-mirrors": [
+    "max-concurrent-uploads": 10,$(if [[ -n "${registry_mirrors}" ]]; then echo "
+    \"registry-mirrors\": [
         ${registry_mirrors}
-    ],
+    ],"; fi)
     "exec-opts": ["native.cgroupdriver=systemd"],
     "live-restore": true,
     "storage-driver": "overlay2"
@@ -1277,12 +1362,12 @@ EOF
   fi
 
   local mirror_count
-  if [[ "${REGISTRY_MIRROR}" == "CN" ]]; then
+  if [[ "${effective_mirror_setting}" == "CN" ]]; then
     mirror_count="16"
   else
     mirror_count="0"
   fi
-  log_info "Docker镜像加速器已配置，包含${mirror_count}个镜像源"
+  log_info "Docker镜像配置完成，包含${mirror_count}个镜像源"
 
   mark_completed "docker"
 }
@@ -1663,14 +1748,38 @@ EOF
 # ---- 显示完成摘要 ----
 show_summary() {
   log_success "=== 开发环境配置完成 ==="
+  
+  local proxy_info=""
+  local mirror_info=""
+  local effective_mirror_setting=$(get_docker_registry_mirrors)
+  
+  if [[ "${IN_CHINA}" == "true" ]]; then
+    proxy_info="${GITHUB_PROXY:-https://ghfast.top}"
+    if [[ "${effective_mirror_setting}" == "CN" ]]; then
+      mirror_info="中国镜像源（阿里云APT源 + 16个Docker镜像源）"
+    else
+      mirror_info="中国镜像源（阿里云APT源）+ 官方Docker Hub"
+    fi
+  else
+    proxy_info="(无，非中国大陆地区)"
+    mirror_info="官方源"
+  fi
+  
   cat <<EOF
+地区配置: ${IN_CHINA} $(if [[ "${IN_CHINA}" == "auto" ]]; then echo "(自动检测)"; fi)
 目标用户: ${TARGET_USER}
-GitHub代理: ${GITHUB_PROXY:-(无)}
-Docker镜像源: ${REGISTRY_MIRROR}
+GitHub代理: ${proxy_info}
+镜像源配置: ${mirror_info}
+
 已安装/配置：
   • SSH服务 (允许root登录，密码认证)
   • SSH密钥对 (已配置免密登录到localhost)
   • iptables (Docker依赖)
+$(if [[ "${IN_CHINA}" == "true" ]]; then
+  echo "  • 阿里云APT镜像源 (中国大陆优化)"
+else
+  echo "  • 官方APT源 (保持默认配置)"
+fi)
   • zsh + Oh My Zsh + Powerlevel10k
   • vim (Catppuccin 浅色主题 - catppuccin_latte)
   • tmux (Catppuccin Latte 浅色主题, 前缀+I 安装插件)
@@ -1678,7 +1787,11 @@ Docker镜像源: ${REGISTRY_MIRROR}
   • Docker & Docker Compose (优化版本，一致的安装逻辑)
     - Docker: 支持本地缓存和/opt/docker/down缓存
     - Docker Compose: 支持本地缓存和版本选择
-    - 配置了16个Docker镜像加速器 (CN模式)
+$(if [[ "${effective_mirror_setting}" == "CN" ]]; then
+    echo "    - 配置了16个Docker镜像加速器 (中国大陆优化)"
+else
+    echo "    - 使用官方Docker Hub (非中国大陆地区)"
+fi)
     - containerd 已安装并配置
     - 优化的systemd服务配置
     - iptables前向规则自动配置
@@ -1704,6 +1817,12 @@ tmux配置亮点：
   • 鼠标支持和历史记录优化
   • 自定义快捷键绑定
 
+地区适配特性：
+  • 自动检测地区 (时区、语言、IP等)
+  • 中国大陆: 启用阿里云源、GitHub代理、Docker镜像加速
+  • 其他地区: 使用官方源，无代理，保持原生体验
+  • 支持手动覆盖: IN_CHINA=true/false
+
 重要提示：
   1. 用户 ${TARGET_USER} 需要重新登录以使以下更改完全生效：
      - zsh 作为默认 shell
@@ -1717,12 +1836,21 @@ tmux配置亮点：
      - 默认版本：Docker ${DOCKER_VERSION}, Docker Compose ${DOCKER_COMPOSE_VERSION}
      - 缓存机制：安装包会缓存在 /tmp/ 目录
      - 版本选择：支持环境变量或交互式输入
-     - 镜像加速：支持16个国内镜像源（CN模式）
+$(if [[ "${effective_mirror_setting}" == "CN" ]]; then
+    echo "     - 镜像加速：支持16个国内镜像源（中国大陆地区）"
+else
+    echo "     - 镜像配置：使用官方Docker Hub（非中国大陆地区）"
+fi)
   4. 环境变量支持：
+     - IN_CHINA: 地区配置 (auto/true/false, 默认: auto)
      - DOCKER_VERSION: 指定Docker版本 (默认: 28.2.2)
      - DOCKER_COMPOSE_VERSION: 指定Docker Compose版本 (默认: v2.36.2)
-     - GITHUB_PROXY: GitHub代理地址 (默认: https://ghfast.top)
-     - REGISTRY_MIRROR: Docker镜像源 (默认: CN)
+$(if [[ "${IN_CHINA}" == "true" ]]; then
+    echo "     - GITHUB_PROXY: GitHub代理地址 (默认: https://ghfast.top)"
+else
+    echo "     - GITHUB_PROXY: GitHub代理地址 (当前禁用，非中国大陆)"
+fi)
+     - REGISTRY_MIRROR: Docker镜像源 (auto/CN/NONE, 默认: auto)
   5. 验证安装：
      - 'docker --version' 和 'docker info'
      - 'docker-compose --version' 或 'docker compose version'
@@ -1740,6 +1868,11 @@ tmux配置亮点：
   - tmux: ${TARGET_HOME}/.tmux.conf (Catppuccin Latte 主题)
   - Docker: /etc/docker/daemon.json
   - Docker Compose: 独立二进制文件安装
+$(if [[ "${IN_CHINA}" == "true" ]]; then
+    echo "  - APT源: /etc/apt/sources.list (阿里云镜像)"
+else
+    echo "  - APT源: /etc/apt/sources.list (保持系统默认)"
+fi)
 EOF
 }
 
@@ -1770,12 +1903,25 @@ main() {
       echo "  --help    显示此帮助信息"
       echo ""
       echo "环境变量:"
-      echo "  GITHUB_PROXY           GitHub代理前缀 (默认: https://ghfast.top)"
+      echo "  IN_CHINA               地区配置 (auto/true/false, 默认: auto)"
+      echo "                         - auto: 自动检测地区"
+      echo "                         - true: 强制启用中国大陆配置"
+      echo "                         - false: 强制禁用中国大陆配置"
+      echo "  GITHUB_PROXY           GitHub代理前缀 (仅中国大陆时启用, 默认: https://ghfast.top)"
       echo "  DOCKER_VERSION         Docker版本号 (默认: 28.2.2)"
       echo "  DOCKER_COMPOSE_VERSION Docker Compose版本号 (默认: v2.36.2)"
-      echo "  REGISTRY_MIRROR        Docker镜像源 (默认: CN, 可设为其他值禁用镜像加速)"
+      echo "  REGISTRY_MIRROR        Docker镜像源 (auto/CN/NONE, 默认: auto)"
+      echo "                         - auto: 根据地区自动配置"
+      echo "                         - CN: 强制使用中国镜像源"
+      echo "                         - NONE: 使用官方Docker Hub"
       echo ""
-      echo "新增特性 (优化版):"
+      echo "地区适配特性 (新增):"
+      echo "  ✓ 自动地区检测 - 基于时区、语言环境、IP地址等多种方式"
+      echo "  ✓ 智能镜像配置 - 中国大陆启用阿里云APT源和Docker镜像加速"
+      echo "  ✓ GitHub代理支持 - 仅在中国大陆时启用GitHub访问加速"
+      echo "  ✓ 全球化友好 - 非中国地区保持原生官方源配置"
+      echo ""
+      echo "现有特性 (优化版):"
       echo "  ✓ 额外工具可选安装 - 脚本运行时可选择是否安装开发工具"
       echo "  ✓ Vim Catppuccin浅色主题 - 使用catppuccin_latte浅色配色"
       echo "  ✓ tmux Catppuccin浅色主题 - 与vim主题保持一致"
@@ -1787,20 +1933,29 @@ main() {
       echo "  - 智能缓存机制，避免重复下载"
       echo "  - 支持多架构: x86_64, aarch64, armv7, armv6, ppc64le, s390x, riscv64"
       echo "  - 完整的错误处理和版本验证"
-      echo "  - GitHub代理支持加速下载"
+      echo "  - GitHub代理支持加速下载（仅中国大陆）"
       echo ""
       echo "使用示例:"
-      echo "  DOCKER_VERSION=27.3.1 DOCKER_COMPOSE_VERSION=v2.35.1 $0"
-      echo "  GITHUB_PROXY='' $0  # 禁用GitHub代理"
+      echo "  $0                                          # 自动检测地区并配置"
+      echo "  IN_CHINA=true $0                           # 强制启用中国大陆配置"
+      echo "  IN_CHINA=false $0                          # 强制使用国际配置"
+      echo "  IN_CHINA=true DOCKER_VERSION=27.3.1 $0    # 中国配置+指定Docker版本"
+      echo "  REGISTRY_MIRROR=NONE $0                    # 禁用Docker镜像加速"
+      echo "  GITHUB_PROXY='' IN_CHINA=true $0           # 中国配置但禁用GitHub代理"
       exit 0 ;;
   esac
 
   echo ""
-  log_success "=== Debian/Ubuntu 开发环境配置脚本 (优化版) ==="
+  log_success "=== Debian/Ubuntu 开发环境配置脚本 (地区适配版) ==="
   echo ""
+  
+  # 首先检测地区
+  detect_china_region
+  
   log_info "开始配置开发环境..."
-  log_info "GitHub代理: ${GITHUB_PROXY:-(无)}"
-  log_info "Docker镜像源: ${REGISTRY_MIRROR}"
+  log_info "地区配置: ${IN_CHINA}"
+  log_info "GitHub代理: $(get_github_proxy || echo "(无)")"
+  log_info "Docker镜像源: $(get_docker_registry_mirrors)"
   log_info "Docker版本: ${DOCKER_VERSION}"
   log_info "Docker Compose版本: ${DOCKER_COMPOSE_VERSION}"
 
