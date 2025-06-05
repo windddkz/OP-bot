@@ -794,6 +794,7 @@ configure_vim() {
 
   local vim_runtime_dir="${TARGET_HOME}/.vim_runtime"
   local my_configs_path="${vim_runtime_dir}/my_configs.vim"
+  local my_plugins_dir="${vim_runtime_dir}/my_plugins"
 
   # 安装 amix/vimrc
   if [[ ! -d "${vim_runtime_dir}" ]]; then
@@ -817,11 +818,14 @@ configure_vim() {
     log_warning "amix/vimrc 目录 (${vim_runtime_dir}) 已存在，跳过基础安装。"
   fi
 
-  # 下载并安装 Catppuccin 主题
+  # 安装 Catppuccin 主题到正确的位置（my_plugins目录）
   log_info "安装 Catppuccin Vim 主题..."
-  local catppuccin_theme_dir="${vim_runtime_dir}/sources_non_forked/catppuccin-vim"
+  local catppuccin_theme_dir="${my_plugins_dir}/catppuccin-vim"
 
   if [[ ! -d "${catppuccin_theme_dir}" ]]; then
+    # 确保 my_plugins 目录存在
+    create_user_dir "${my_plugins_dir}"
+    
     local catppuccin_repo_url
     catppuccin_repo_url=$(add_github_proxy 'https://github.com/catppuccin/vim.git')
 
@@ -846,16 +850,13 @@ if has("termguicolors")
   set termguicolors
 endif
 
-" Catppuccin 主题配置
-let g:catppuccin_flavour = "latte"  " 可选: latte, frappe, macchiato, mocha
-
 " 应用 Catppuccin 主题
 try
-  execute 'colorscheme catppuccin_' . g:catppuccin_flavour
+  colorscheme catppuccin_latte
 catch
   " 如果 Catppuccin 主题不可用，回退到 amix/vimrc 默认主题
   try
-    colorscheme peaksea
+    colorscheme shine
   catch
     colorscheme default
   endtry
@@ -907,8 +908,8 @@ EOF
   log_info "  • 重载个人配置: <leader>sv (在 Vim 中)"
   log_info "使用说明："
   log_info "  • amix/vimrc 包含大量有用的插件和配置"
-  log_info "  • 如需更换主题风味，编辑 ${my_configs_path} 中的 g:catppuccin_flavour"
-  log_info "  • 可选风味: latte(浅色), frappe(暖色), macchiato(深色), mocha(最深色)"
+  log_info "  • 如需更换主题风味，编辑 ${my_configs_path} 中的 colorscheme 行"
+  log_info "  • 可选风味: catppuccin_latte(浅色), catppuccin_frappe(暖色), catppuccin_macchiato(深色), catppuccin_mocha(最深色)"
 
   mark_completed "vim_config"
 }
