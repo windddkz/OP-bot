@@ -1583,8 +1583,8 @@ final_setup() {
   fi
   log_info "向 ${zshrc_file_path} 添加自定义别名 (如果不存在)..."
   if ! run_as_user "grep -q '# Custom Aliases Marker (dev-env-script)' '${zshrc_file_path}'" 2>/dev/null; then
-    local custom_aliases_content
-    read -r -d '' custom_aliases_content <<EOF || true
+    # 使用 cat 和 heredoc 来避免引号嵌套问题
+    run_as_user "cat >> '${zshrc_file_path}' << 'EOF'
 
 # Custom Aliases Marker (dev-env-script) - 请勿删除此行，用于脚本判断
 alias ls='ls --color=auto'
@@ -1622,9 +1622,9 @@ alias gb='git branch'
 alias gp='git push'
 alias gpf='git push --force-with-lease'
 alias gpl='git pull'
-alias glog="git log --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) %C(bold blue)<%an>%Creset' --abbrev-commit --date=relative"
+alias glog='git log --graph --pretty=format:\"%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) %C(bold blue)<%an>%Creset\" --abbrev-commit --date=relative'
 alias gdiff='git diff'
-alias gignore='echo -e ".DS_Store\nThumbs.db\nnode_modules/\n.vscode/\n__pycache__/\n*.pyc\n*.swp\n*~" >> .gitignore'
+alias gignore='echo -e \".DS_Store\\nThumbs.db\\nnode_modules/\\n.vscode/\\n__pycache__/\\n*.pyc\\n*.swp\\n*~\" >> .gitignore'
 alias d='${SUDO_CMD} docker'
 alias dc='${SUDO_CMD} docker compose'
 alias dps='${SUDO_CMD} docker ps -a'
@@ -1641,8 +1641,7 @@ alias scripts='cd ~/Scripts'
 alias dl='cd ~/Downloads'
 alias conf='cd ~/.config'
 # End Custom Aliases Marker
-EOF
-    run_as_user "echo \"${custom_aliases_content}\" >> '${zshrc_file_path}'"
+EOF"
     log_info "自定义别名已添加到 ${zshrc_file_path}。"
   else
     log_warning "检测到自定义别名标记，跳过添加别名。"
