@@ -1030,12 +1030,12 @@ install_powerlevel10k() {
   if [[ ! -d "${p10k_theme_dir}" ]]; then
     log_info "安装 Powerlevel10k 主题..."
     # Ensure ~/.oh-my-zsh/custom/themes exists
-    create_user_dir "$(dirname "${p10k_theme_dir}")" 
+    create_user_dir "$(dirname "${p10k_theme_dir}")"
     local p10k_repo_url
     p10k_repo_url=$(add_github_proxy 'https://github.com/romkatv/powerlevel10k.git')
-    if ! command -v git &>/dev/null; then 
+    if ! command -v git &>/dev/null; then
         log_info "Powerlevel10k 安装需要 git。尝试安装基础工具..."
-        install_basic_tools || true; 
+        install_basic_tools || true;
     fi
     if ! command -v git &>/dev/null; then log_error "git 未安装，无法克隆Powerlevel10k。"; return 1; fi
 
@@ -1054,7 +1054,7 @@ install_powerlevel10k() {
     run_as_user "echo 'export ZSH=\"${TARGET_HOME}/.oh-my-zsh\"' >> '${zshrc_file_path}'"
     # Add a default OMZ source line if it's missing
     if ! run_as_user "grep -q 'source \$ZSH/oh-my-zsh.sh' '${zshrc_file_path}'"; then
-        run_as_user "echo 'plugins=(git)' >> '${zshrc_file_path}'" 
+        run_as_user "echo 'plugins=(git)' >> '${zshrc_file_path}'"
         run_as_user "echo \"source \\\$ZSH/oh-my-zsh.sh\" >> '${zshrc_file_path}'"
     fi
   fi
@@ -1065,7 +1065,7 @@ install_powerlevel10k() {
     # Insert ZSH_THEME before 'source $ZSH/oh-my-zsh.sh' or at a sensible place
     if run_as_user "grep -q 'source \$ZSH/oh-my-zsh.sh' '${zshrc_file_path}'"; then
         run_as_user "sed -i '/source \\\$ZSH\\/oh-my-zsh.sh/i ZSH_THEME=\"powerlevel10k/powerlevel10k\"' '${zshrc_file_path}'"
-    else 
+    else
         run_as_user "echo 'ZSH_THEME=\"powerlevel10k/powerlevel10k\"' >> '${zshrc_file_path}'"
     fi
   fi
@@ -1080,10 +1080,22 @@ install_powerlevel10k() {
      run_as_user "echo 'typeset -g POWERLEVEL9K_DISABLE_CONFIGURATION_WIZARD=true' >> '${zshrc_file_path}'"
   fi
   log_success "Powerlevel10k 主题安装和初步配置完成。"
+
+  log_info "修复 Zsh compinit insecure directories 权限问题..."
+  # Zsh的compinit会检查$fpath中的目录权限，如果group或other有写权限，会报不安全。
+  # 此命令以目标用户身份运行zsh，找出这些不安全的目录，并移除它们的g-w和o-w权限。
+  # 使用 '|| true' 避免在没有不安全目录时xargs可能返回非零退出码而导致脚本中断。
+  local fix_cmd="command -v zsh &>/dev/null && zsh -c 'autoload -U compaudit; compaudit | xargs --no-run-if-empty chmod g-w,o-w' || true"
+  if run_as_user "${fix_cmd}"; then
+    log_success "Zsh compinit 权限修复完成。"
+  else
+    # 即使失败，也只打印警告，不中断脚本
+    log_warning "Zsh compinit 权限修复时可能遇到问题。"
+  fi
+
   log_info "请重新登录或启动新的zsh会话。您可能需要运行 'p10k configure' 来个性化您的提示符。"
   mark_completed "powerlevel10k"
 }
-
 # --- 步骤 7：配置 Vim (使用amix/vimrc + Catppuccin主题) ---
 configure_vim() {
   skip_if_completed "vim_config" && return
