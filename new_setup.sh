@@ -2250,6 +2250,177 @@ EOF
   mark_completed "final_user_setup"
 }
 
+# --- 步骤 15：安装与配置 frpc (可选) ---
+install_and_configure_frpc() {
+  skip_if_completed "frpc_setup" && return
+  log_step "配置 frpc 内网穿透 (可选)"
+
+  local install_frpc_choice
+  read -rp "$(log_prompt '是否需要安装和配置frpc内网穿透？ (y/N) [默认: N]: ')" install_frpc_choice
+  if [[ "${install_frpc_choice,,}" != "y" ]]; then
+    log_info "跳过 frpc 安装和配置。"
+    return
+  fi
+
+  # 检查核心依赖
+  if ! command -v curl &>/dev/null || ! command -v jq &>/dev/null; then
+    log_error "frpc自动安装需要 curl 和 jq。请先确保它们已安装 (通常在 '基础工具' 步骤中安装)。"
+    return 1
+  fi
+  if ! command -v tar &>/dev/null; then
+    log_error "tar 命令未找到，无法解压frp安装包。"
+    return 1
+  fi
+
+  # 收集用户输入
+  local frps_addr frps_port frps_token remote_ssh_port
+  while [[ -z "${frps_addr:-}" ]]; do
+    read -rp "$(log_prompt '请输入frps服务器的IP或域名: ')" frps_addr
+  done
+  read -rp "$(log_prompt '请输入frps服务器的连接端口 [默认: 7000]: ')" frps_port
+  frps_port="${frps_port:-7000}"
+  while [[ -z "${frps_token:-}" ]]; do
+    read -rp "$(log_prompt '请输入frps的认证token: ')" frps_token
+  done
+  while [[ -z "${remote_ssh_port:-}" ]]; do
+    read -rp "$(log_prompt '请输入您希望为SSH(本地端口22)映射到frps服务器的远程端口 (例如 6022): ')" remote_ssh_port
+  done
+
+  # 获取最新版本号并构建下载URL
+  log_info "正在从GitHub获取frp最新版本信息..."
+  local frp_version_tag frp_api_url
+  frp_api_url=$(add_github_proxy "https://api.github.com/repos/fatedier/frp/releases/latest")
+  
+  frp_version_tag=$(curl -sSL "${frp_api_url}" | jq -r '.tag_name' 2>/dev/null || echo "")
+  if [[ -z "${frp_version_tag}" ]] || [[ "${frp_version_tag}" == "null" ]]; then
+    log_error "无法自动获取frp最新版本号。请检查网络或GitHub API访问。"
+    log_info "您可以手动指定版本号，或稍后重试。"
+    read -rp "$(log_prompt '请输入frp版本号 (例如 0.54.0, 留空则中止): ')" frp_version_manual
+    if [[ -z "${frp_version_manual}" ]]; then return 1; fi
+    frp_version_tag="v${frp_version_manual#v}" # 确保 'v' 前缀
+  fi
+  local frp_version="${frp_version_tag#v}"
+  log_info "将下载并安装 frp 版本: ${frp_version}"
+
+  local arch frp_arch
+  arch=$(uname -m)
+  case "${arch}" in
+    x86_64)  frp_arch="amd64" ;;
+    aarch64) frp_arch="arm64" ;;
+    armv7l)  frp_arch="arm" ;;
+    *) log_error "不支持的CPU架构进行frp安装: ${arch}"; return 1 ;;
+  esac
+
+  local frp_filename="frp_${frp_version}_linux_${frp_arch}.tar.gz"
+  local download_url
+  download_url=$(add_github_proxy "https://github.com/fatedier/frp/releases/download/${frp_version_tag}/${frp_filename}")
+  
+  # 下载和解压
+  local temp_download_path temp_extract_dir
+  temp_download_path=$(mktemp --tmpdir frp_download.XXXXXX.tar.gz)
+  temp_extract_dir=$(mktemp -d --tmpdir frp_extract.XXXXXX)
+  
+  log_info "正在下载 ${frp_filename}..."
+  log_info "下载地址: ${download_url}"
+  if ! curl --connect-timeout 15 --max-time 300 -fsSL "${download_url}" -o "${temp_download_path}"; then
+    log_error "下载frp失败！请检查版本号、架构和网络连接。"
+    rm -f "${temp_download_path}"
+    rm -rf "${temp_extract_dir}"
+    return 1
+  fi
+
+  log_info "解压frp安装包..."
+  if ! tar -xzf "${temp_download_path}" -C "${temp_extract_dir}"; then
+    log_error "解压frp安装包失败！"
+    rm -f "${temp_download_path}"
+    rm -rf "${temp_extract_dir}"
+    return 1
+  fi
+  
+  local frp_extracted_folder="${temp_extract_dir}/frp_${frp_version}_linux_${frp_arch}"
+
+  # 安装
+  log_info "安装 frpc 到 /usr/local/bin/ ..."
+  if [[ -f "${frp_extracted_folder}/frpc" ]]; then
+    ${SUDO_CMD} cp "${frp_extracted_folder}/frpc" /usr/local/bin/
+    ${SUDO_CMD} chmod +x /usr/local/bin/frpc
+  else
+    log_error "在解压目录中未找到frpc文件！"
+    rm -f "${temp_download_path}"
+    rm -rf "${temp_extract_dir}"
+    return 1
+  fi
+
+  # 创建配置文件
+  log_info "创建frpc配置文件 /etc/frp/frpc.toml ..."
+  ${SUDO_CMD} mkdir -p /etc/frp
+  
+  # 使用TOML格式，适配新版frp
+  local frpc_config_content
+  read -r -d '' frpc_config_content << EOF
+# /etc/frp/frpc.toml - 由开发环境脚本自动生成
+serverAddr = "${frps_addr}"
+serverPort = ${frps_port}
+auth.token = "${frps_token}"
+
+[[proxies]]
+name = "ssh"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 22
+remotePort = ${remote_ssh_port}
+EOF
+
+  echo "${frpc_config_content}" | ${SUDO_CMD} tee /etc/frp/frpc.toml > /dev/null
+  ${SUDO_CMD} chmod 644 /etc/frp/frpc.toml
+
+  # 创建Systemd服务
+  log_info "创建frpc的systemd服务..."
+  local frpc_service_content
+  read -r -d '' frpc_service_content << EOF
+[Unit]
+Description=frp Client Service
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+# 未指定User，服务将以root身份运行，简化权限管理
+Restart=on-failure
+RestartSec=5s
+ExecStart=/usr/local/bin/frpc -c /etc/frp/frpc.toml
+ExecReload=/bin/kill -HUP \$MAINPID
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  
+  echo "${frpc_service_content}" | ${SUDO_CMD} tee /etc/systemd/system/frpc.service > /dev/null
+
+  # 启动并验证服务
+  log_info "重新加载systemd并启动frpc服务..."
+  ${SUDO_CMD} systemctl daemon-reload
+  ${SUDO_CMD} systemctl enable frpc.service
+  ${SUDO_CMD} systemctl start frpc.service
+  
+  sleep 3 # 等待服务启动
+
+  if ${SUDO_CMD} systemctl is-active --quiet frpc.service; then
+    log_success "frpc服务已成功启动并运行！"
+    log_info "SSH穿透已配置： ${frps_addr}:${remote_ssh_port} -> localhost:22"
+    log_info "您可以编辑 /etc/frp/frpc.toml 添加更多穿透规则。"
+    log_info "使用 'sudo systemctl status frpc' 查看服务状态。"
+  else
+    log_error "frpc服务启动失败！"
+    log_warning "请使用 'sudo journalctl -u frpc.service --since \"1 minute ago\"' 查看详细日志。"
+  fi
+
+  # 清理
+  rm -f "${temp_download_path}"
+  rm -rf "${temp_extract_dir}"
+
+  mark_completed "frpc_setup"
+}
 
 # ---- 显示完成摘要与后续步骤 ----
 show_summary() {
@@ -2336,6 +2507,9 @@ show_summary() {
   fi
   echo "  • Git (全局用户名、邮箱、默认行为)"
   echo "  • 常用开发目录 (~/Projects等) 及Zsh别名"
+  if is_completed "frpc_setup"; then
+  echo "  • frpc 内网穿透客户端"
+  fi
   echo
   log_warning "重要后续步骤："
   echo -e "  1. ${YELLOW}重新登录${NC}用户 ${TARGET_USER} 或 ${YELLOW}重启系统${NC} 以确保所有更改完全生效。"
@@ -2526,6 +2700,8 @@ HELP_EOF
 
   final_setup
 
+  install_and_configure_frpc
+  
   echo
   show_summary
 }
