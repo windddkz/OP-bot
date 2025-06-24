@@ -97,6 +97,16 @@ jobs:
         echo "local_port = 8000" >> /opt/frp/frpc-ipv6.ini
         echo "remote_port = $FRP_REMOTE_PORT_F" >> /opt/frp/frpc-ipv6.ini
         nohup /opt/frp/frpc -c /opt/frp/frpc-ipv6.ini > /dev/null 2>&1 &
+    - name: Get Docker Compose
+      run: |
+        LATEST=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep -o '"tag_name": "[^"]*' | cut -d'"' -f4)
+        ARCH=$([ "$(uname -m)" = "x86_64" ] && echo "x86_64" || echo "aarch64")
+        OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+        URL="https://github.com/docker/compose/releases/download/${LATEST}/docker-compose-${OS}-${ARCH}"
+        echo "DownloadURL: $URL"
+        curl -L "$URL" -o docker-compose
+        chmod +x docker-compose
+        sudo mv docker-compose /usr/local/bin/docker-compose
     #- name: Setup tmate session fine
     #  uses: mxschmitt/action-tmate@v3
     - name: Login to Docker Hub
