@@ -1496,9 +1496,11 @@ generate_docker_daemon_json() {
         "https://docker.nju.edu.cn"
         "https://dockerproxy.com" 
     )
-    log_info "Docker daemon 将配置中国大陆镜像加速器。"
+    # 将日志输出到stderr(>&2)，避免被命令替换捕获
+    log_info "Docker daemon 将配置中国大陆镜像加速器。" >&2
   else
-    log_info "Docker daemon 将使用官方Docker Hub (不配置特定镜像加速器)。"
+    # 将日志输出到stderr(>&2)，避免被命令替换捕获
+    log_info "Docker daemon 将使用官方Docker Hub (不配置特定镜像加速器)。" >&2
   fi
   
   local daemon_json_content="{\n"
